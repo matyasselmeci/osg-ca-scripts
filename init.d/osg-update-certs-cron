@@ -1,0 +1,65 @@
+#!/bin/bash
+#
+# osg-update-certs-cron  This shell script enables the automatic use of osg-update-certs
+#
+# Based on fetch-crl-cron script
+#
+# chkconfig:	- 51 01
+#
+# description:  Enable daily run of osg-update-certs, a CA certificate updater.
+# processname:  osg-update-certs-cron
+# config: /etc/osg-update-certs.conf
+#
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+lockfile=/var/lock/subsys/osg-update-certs-cron
+
+RETVAL=0
+
+start() {
+	action $"Enabling periodic osg-update-certs: " touch "$lockfile" 
+	RETVAL=$?
+}
+
+stop() {
+	action $"Disabling periodic osg-update-certs: " rm -f "$lockfile" 
+	RETVAL=$?
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop) 
+	stop
+	;;
+  restart|force-reload)
+	restart
+	;;
+  reload)
+	;;
+  condrestart)
+	[ -f "$lockfile" ] && restart
+	;;
+  status)
+	if [ -f $lockfile ]; then
+		echo $"Periodic osg-update-certs is enabled."
+		RETVAL=0
+	else
+		echo $"Periodic osg-update-certs is disabled."
+		RETVAL=3
+	fi
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|restart|reload|force-reload|condrestart}"
+	exit 1
+esac
+
+exit $RETVAL

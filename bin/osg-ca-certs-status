@@ -1,0 +1,169 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Getopt::Long;
+use OSGCerts;
+
+=head1 NAME 
+
+osg-ca-certs-status - Print status information installed about CA certificates 
+and CRLs
+
+=head1 SYNOPSIS
+
+    osg-ca-certs-status [options] 
+                --certs-version
+                --help
+
+=head1 DESCRIPTION
+
+This program is used to provide information about the installed CA Certificates
+and CRLs.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--certs-version> 
+
+Prints only the certificate version, and exits.  This option is provided
+to get this information from within a script with minimal parsing.  If 
+the certs version is unknown for any reason, this script prints an error 
+and exits with exit code 1.
+
+=item B<--help> 
+
+Show brief explanatory text for using osg-ca-certs-status
+
+=back
+
+=cut
+
+my ($verbose, $certs_version_only);
+
+GetOptions("verbose"        => \$verbose,
+           "certs-version"  => \$certs_version_only,
+           "help|usage"     => \&usage);
+
+OSGCerts::initialize("osg-ca-certs-status");
+
+my $installed_certs_version = OSGCerts::get_installed_certs_version(0);
+
+
+# If $certs_version is defined, just print that and exit
+if($certs_version_only) {
+    print_version_and_exit();
+}
+
+print_full_info();
+
+sub usage {
+    print "ca-certs-info:\n" . 
+        "  --certs-version  Print only the certs version and exit\n" . 
+        "  --help --usage   Print this message\n";
+    exit 1;
+}
+
+sub print_version_and_exit {
+    if(defined $installed_certs_version) {
+        print "$installed_certs_version\n";
+        exit 0;
+    }
+    else {
+        print STDERR "ERROR: Installed certs version not defined.\n";
+        exit 1;
+    }
+}
+
+sub print_full_info {
+
+    # The version
+    print "\nCA-Certificates Info:\n";
+    if(defined $installed_certs_version) {
+        print "    Version: $installed_certs_version\n";
+    }
+    else {
+        print "ERROR: Installed certs version not defined.\n";
+    }
+
+    
+    # Some osg-update-certs info
+    print "\nosg-update-certs info:\n";
+
+    # When osg-update-certs last ran
+    my $info = OSGCerts::parse_certs_updater_status_file();
+
+    if(defined($info->{time})) {
+        my ($sec,$min,$hour,$mday,$month,$year) = localtime($info->{time});
+        $month++;
+        $year += 1900;
+        printf("    Last run: %02d-%02d-%02dT%02d-%02d-%02d\n", $year, $month, $mday, $hour, $min, $sec);
+        
+        if((time - $info->{time}) > (60*60*24)) {
+            print "    WARNING: osg-update-certs has not run in over 24 hours\n";
+        }
+    }
+    else {
+        print "    Last run: unknown\n";
+    }
+
+
+    # When osg-update-certs last updated
+    if(defined($info->{last_update})) {
+        my ($sec,$min,$hour,$mday,$month,$year) = localtime($info->{last_update});
+        $month++;
+        $year += 1900;
+        printf("    Last updated: %02d-%02d-%02dT%02d-%02d-%02d\n", $year, $month, $mday, $hour, $min, $sec);
+    }
+    else {
+        print "    WARNING: last update time unknown\n";
+    }
+
+    # Check that osg-update-certs is running
+    my $crontab = undef;
+    my $osg_update_certs_path = "/usr/sbin/osg-update-certs";
+    if(!-e $osg_update_certs_path) {
+        print "    WARNING: osg-update-certs does not exist at $osg_update_certs_path\n";
+    }
+    else {
+        if(-e "/etc/cron.d/osg-update-certs") {
+            print "    Status: Installed and running\n";
+        }
+        else {
+            print "    Status: Installed, but not running via root's crontab.\n";
+        }
+    }
+
+
+    # Some Fetch-CRL info
+    print "\nFetch-CRL info:\n";
+
+    # When Fetch-CRL last ran
+    my $fetch_crl_info_file = "/var/lib/osg/fetch-crl.lastrun";
+    if(-r $fetch_crl_info_file) {
+        my $time = `cat $fetch_crl_info_file`;
+        chomp($time);
+        my ($sec,$min,$hour,$mday,$month,$year) = localtime($time);
+        $month++;
+        $year += 1900;
+        printf("    Last run: %02d-%02d-%02dT%02d-%02d-%02d\n", $year, $month, $mday, $hour, $min, $sec);
+        
+        if( (time - $time) > (60*60*48) ) {
+            print "    WARNING: fetch-crl has not run in over 48 hours\n";
+        }
+    }
+    else {
+        print "    Last run: unknown ($fetch_crl_info_file does not exist or cannot be read).\n";
+    }
+    
+    # Check that fetch-crl is running
+    my $path = "/etc/cron.d/fetch-crl";
+    if(!-e $path) {
+        print "    WARNING: fetch-crl.cron does not exist at $path\n";
+    }
+    else {
+	print "    Status: Installed and running\n";
+    }
+
+    print "\n";
+}

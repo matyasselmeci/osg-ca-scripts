@@ -1,0 +1,1042 @@
+#!/usr/bin/env perl
+
+=head1 NAME 
+
+osg-update-certs - Update the OSG CA certificate installation
+
+=head1 SYNOPSIS
+
+    osg-update-certs [options] 
+                --force
+                --dump-config
+                --quiet
+                --debug
+                --help
+
+=head1 DESCRIPTION
+
+This program is used to update the OSG CA certificate distribution.
+
+Normally, this program is run by cron once every hour, but you can
+choose to run it manually if you prefer.
+
+When this program runs via cron, it exits immediately if the program 
+has been successfully run in the last 24 hours.  The reason for this 
+is reliability: the OSG installation will set this program to run
+every hour via cron, but it has the goal of checking for an update
+every 24 hours. If the OSG web site is down, or some other serious
+error occurs, it retries an hour later in hopes that the error has
+resolved itself. Once the program has run successfully it will not try
+to do any updates for 24 hours.
+
+When osg-update-certs runs, if it finds a previous incarnation of itself 
+still running, it will kill the old process before it runs. 
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--force>
+
+Forces the script to download the certificates even though the release 
+version has not changed.
+
+=item B<--dump-config>
+
+Print the configuration to the screen and exit.  No other work will be done.
+
+=item B<--quiet>
+
+Run with no output to standard output. All output will be in the log file. 
+
+=item B<--debug> 
+
+Provide more information in the log file.
+
+=item B<--help> 
+
+Show brief explanatory text for using osg-update-certs
+
+=back
+
+=head1 CONFIGURATION
+
+When osg-update-certs is run, it looks for a configuration file in 
+/etc/osg/osg-update-certs.conf.  This file must contain
+an entry for cacerts_url.  There are defaults for all other options.
+
+The configuration file can have blank lines as well as comments.
+Comments begin with a hash mark (#). 
+
+Each option is of the form 
+
+ name=value
+
+The following configuration options can be specified:
+
+=head3 cacerts_url
+
+This option is required.
+
+The cacerts_url option specifies where to download the CA certificates from. 
+For most users, you will be told what this URL should be. For people who 
+are responsible for a CA certificate distribution, this should be the full 
+URL to the description file, not the URL to the tarball or the directory 
+containing these files.  Example:
+
+ cacerts_url=http://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version
+
+=head3 log
+
+The log option specifies where the log file for osg-update-certs is
+located. The log file is always created. It defaults to 
+/var/log/osg-update-certs.log, and you do not need to
+set this unless you prefer the log to be elsewhere.
+
+ log=/var/log/osg-update-certs.log
+
+=head3 debug
+
+This option is equivalent to the command line --debug option listed above.
+If enabled, it will provide more information in the log file.  The default 
+is to not print this information.  To enable it:
+
+ debug=1
+
+=head3 include
+
+An absolute path (or wildcarded path) to the file(s) to be copied into the 
+CA certificates directory in addition to any files that are downloaded from
+the OSG. This can be used to add a CA that is not part of the OSG. It is
+necessary because when the OSG installs a new set of CA certificates it
+creates a directory and does not preserve anything that was previously part
+of the CA certificate directory.  This option can be specified multiple times.
+Example:
+
+ include=/opt/local-ca/12345678.*
+
+ OR 
+
+ include=/opt/local-ca/12345678.0
+ include=/opt/local-ca/12345678.signing_policy
+ include=/opt/local-ca/12345678.crl_url
+
+Note that you should never specify files that are inside a directory that is
+updated by osg-update-certs.  Though it may seem like a handy shortcut to store
+the files in your current certs directory, at the time the files are copied this 
+directory will have been renamed, and the copy will fail.
+
+=head3 exclude_ca
+
+The hash of a Certificate Authority to be removed from the CA certificates
+directory when they are installed.  All files of the form <hash>.* will be
+removed.  This is to remove any CA certificates that you do not wish to trust
+but are provided by the OSG. The default for this option is not to exclude
+any CAs.  To exclude a CA with hash '87654321', include a line such as:
+
+ exclude_ca=87654321
+
+Note that if the CA you are excluding is a symlink the real files that the
+symlink is pointing at will be deleted, along with all links to the real files.
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use FileHandle;
+use File::Basename; # for dirname
+use File::Temp qw/ tempdir /;
+
+use OSGCerts qw/log_msg/;
+
+# Globals
+my $debug = 0;
+my $force_update = 0; # forcing to download certs file even if there has been no update
+my $config_changed = 0; # we will force an update if configuration file changes
+my $quiet = 0;
+my $working_dir;
+my $pid_file;
+my $default_hour;
+my $last_update = "";
+my $dump_config_only = 0;
+my $called_from_cron = 0;
+my $ignore_certs_state = 0;  # this is used for bootstrapping when called from osg-setup-ca-certificates
+my $config;
+my $changed_unpack_path = 0; # This is used to allow downloading the same certs version.
+my $config_file;
+my $opt_sleep = 0;
+
+main();
+exit 0;
+
+##
+## A Perl script with a main() function? 
+## What kind of Perl code is this? Is Alain trying to make it look like C or something?
+## 
+## The logic here is that I wanted to avoid most global variables
+## That way, I can look at a function and know what state it's manipulating.
+## But it's really easy to slip up and use a global variable in Perl.
+## So I put the global space inside of a main() function, and pass around what I need
+## There's probably a more perl-like way of doing this. Feel free to yell and me and 
+## tell me what it is.
+sub main {
+    my $description; # A reference to a hash
+    my $installed_certs_version;
+    my $install_directory;
+    
+    ##
+    ## Part 0: Figure out what we're doing
+    ##
+    read_command_line(); 
+    OSGCerts::initialize("osg-update-certs");
+
+    $pid_file = "/var/run/osg-update-certs.pid";
+    my $certs_version_file = OSGCerts::get_certs_version_file_loc();
+    $config_file = OSGCerts::get_updater_conf_file_loc();
+    load_configuration(); # populates $config
+    
+    msg("osg-update-certs");
+    msg("  Log file: $config->{log}");
+    msg("  Updates from: $config->{cacerts_url}");
+    msg("");
+
+    log_msg("######################################################################");
+    log_msg("Starting up osg-update-certs");
+    dump_config(0) if ($debug);
+
+    ##
+    ## Part 1: Make sure that there are certificates to update.
+    ## If this install does not own any cert installations, this script should not run
+    ##
+    if(!$ignore_certs_state) {
+        my $certs_loc = $config->{install_dir} || "";
+        log_msg("Cert install dir = '$certs_loc'");
+        if(!$certs_loc || !-e $certs_loc) {
+            msg("Nothing to update because there are no CA certificates.");
+            msg("If this installation should own CA certificates, you need to run 'osg-ca-manage setupca' to install them.");
+            die_and_write_status("This installation does not appear to own any certificates to update. Nothing to do, exiting.");
+        }
+    }
+
+    ##
+    ## Part 2: Figure out if we have successfully run in the last 24 hours
+    ##
+    
+    # We always want to check for a successful run because it loads the default hour
+    my $successful_run = check_for_successful_run();
+
+    if($successful_run && $called_from_cron) {
+        # If we reach here, we have successfully checked in the last 24 hours.
+        # Don't do anything, and don't update the status file
+        msg("Skipping update because there has been a successful check in the last 24 hours.");
+        log_msg("There has been a successful check in the last 24 hours.  Exiting.");
+        return;
+    }
+
+    ##
+    ## Part 3: Check the PID file to catch any "hung" osg-update-certs processes
+    ##            Write our PID to the PID file
+    ## 
+    pid_file();
+
+    ## 
+    ## Part 4: Figure out what the current version of the certificates release is
+    ##
+    $install_directory = $config->{install_dir};
+    $working_dir = make_temp_dir();
+    $description = get_certs_description();
+    $installed_certs_version = OSGCerts::get_installed_certs_version(1) || "unknown";
+
+    ## 
+    ## Part 5: Decide if we should download the certificates, and download them.
+    ##
+    if(!$force_update && !$config_changed && $installed_certs_version eq $description->{certsversion}) {
+        msg("Nothing to update: your CA certificate installation is already up-to-date.");
+        log_msg("No need to update the certificates: the installed version ($installed_certs_version) is current.");
+    } 
+    else {
+        msg("Will update CA certificates from version $installed_certs_version to version $description->{certsversion}.");
+
+        if($installed_certs_version eq $description->{certsversion}) {
+            if($force_update) {
+                log_msg("Installed certs version ($installed_certs_version) is up to date.");
+                log_msg("Will install new version anyways because --force is specified.");
+            }
+            elsif($config_changed) {
+                log_msg("Installed certs version ($installed_certs_version) is up to date.");
+                log_msg("Will install new version anyways because configuration changed.");
+            }
+        }
+        else {
+            log_msg("Installed certs version ($installed_certs_version) is not the current version ($description->{certsversion})");
+            log_msg("Will install new version.");
+        }
+        
+        my $certs_tarball = download_certs_tarball($description);
+        my $tarball_is_good = verify_certs_tarball($description, $certs_tarball);
+        
+        ##
+        ## Part 6: Install the certificates
+        ##
+        if ($tarball_is_good) {
+            my $unpacked_path = unpack_certs($description, $certs_tarball, $install_directory);
+            # If $unpacked_path is empty, we don't need to update the certs, but we still want to update the version
+            if($unpacked_path) {
+                adjust_certs($unpacked_path);
+                preserve_crls($unpacked_path, $install_directory);
+                install_certs($unpacked_path, $install_directory);
+                log_update($description->{certsversion});
+            }
+            update_version_info($description, $certs_version_file);
+            
+            $last_update = time;
+            record_config_md5sum();
+            msg("Update successful.");
+        }
+        else {
+            msg("ERROR: Bad certificates tarball.");
+            die_and_write_status("Will not install new certificates because tarball was not good.");
+        }
+    }
+
+    ##
+    ## Part 7: Write a success value into the status file and clean up
+    ##
+    clean_up();
+    write_status_file(1);
+
+    log_msg("All done, exiting.");
+}
+
+#---------------------------------------------------------------------
+#
+# Part 0: Figure out what's going on: read the command line, and our
+#         configuration file, and figure out where the certificates go.
+#
+#---------------------------------------------------------------------
+sub read_command_line {
+
+    GetOptions("debug"             => \$debug,
+               "force"             => \$force_update,
+               "quiet"             => \$quiet,
+               "dump-config"       => \$dump_config_only,
+               "called-from-cron"  => \$called_from_cron,
+               "ignore-certs-state" => \$ignore_certs_state,
+               "random-sleep=i"    => \$opt_sleep,
+               "help|usage"        => \&usage);
+
+    # don't bother printing to STDOUT if nobody's watching
+    $quiet = 1 if($called_from_cron);
+    
+    if($opt_sleep) {
+        if($opt_sleep > (60*60)) {
+            print "WARNING: The maximum random sleep time is 60 minutes.\n";
+            $opt_sleep = (60*60);
+        }
+        elsif($opt_sleep < 0) {
+            print "WARNING: The random sleep can not be less than zero.\n";
+            $opt_sleep = 0;
+        }
+        
+        my $sleep_time = int(rand($opt_sleep));
+        print "Sleeping for $sleep_time seconds before starting.\n";
+        sleep($sleep_time);
+    }
+
+}
+
+sub usage {
+    print "osg-update-certs [--debug] [--force] [--help]\n";
+    exit 1;
+}
+
+# Get osg-update-certs configuration
+sub load_configuration {
+
+    $config = OSGCerts::read_updater_config_file($config_file);
+
+    if(!$config) {
+        log_msg("Error loading configuration.");
+    }
+
+    # If debug was not specified on the command line, but it is set in config file, 
+    # then make sure that debug mode is enabled
+    if(!$debug && $config && $config->{debug}) {
+        $debug = $config->{debug};
+    }
+
+    # This needs to be before we call setup_log.  An RSV probe will call this script with the
+    # --dump-config option via a globus-job-run (which will not have write permission on 
+    # logs), and we do not want it to die with a permissions problem
+    if($dump_config_only) {
+        if(!$config) {
+            print "Error reading configuration.\n";
+            exit 1;
+        }
+        else {
+            dump_config(1);
+            exit 0;
+        }
+    }
+
+    # Has config been updated since last run?
+    $config_changed = has_config_changed();
+
+    setup_log();
+
+    if(!$config->{cacerts_url}) {
+        die_and_write_status("cacerts_url is not defined in '$config_file'.  Exiting");
+    }
+}
+
+
+# This subroutine is used by RSV to get the value of cacerts_url.  
+# If it is modified, ensure that it still works with the relavant probe(s)
+sub dump_config {
+    my ($to_screen) = @_;
+
+    my $text = "Configuration:\n";
+    $text .= "    cacerts_url = $config->{cacerts_url}\n";
+    $text .= "    log = $config->{log}\n";
+    $text .= "    debug = $debug\n";
+
+    $text .= "    include:\n";
+    my $i = $config->{includes};
+    foreach my $inc (@$i) {
+        $text .= "        $inc\n";
+    }
+
+    my $e = $config->{excludes};
+    $text .= "    exclude:\n";
+    foreach my $ex (@$e) {
+        $text .= "        $ex\n";
+    }
+
+    my $e_cas = $config->{exclude_cas};
+    $text .= "    exclude_cas:\n";
+    foreach my $ex_ca (@$e_cas) {
+        $text .= "        $ex_ca\n";
+    }
+
+    if($to_screen) {
+        print $text;
+    }
+    else {
+        log_msg($text);
+    }
+}
+
+sub has_config_changed {
+    my $config_md5 = "$config_file.md5";
+    if (!-e $config_file || !-e $config_md5) {
+        # If config file not found we assume it has been updated.
+        # The same holds if the md5 file for the config is missing. 
+        return 1;
+    }
+    my $recorded_md5 = OSGCerts::slurp($config_md5);
+
+    my $md5sum = md5sum($config_file);
+    if($md5sum) {
+        if($md5sum ne $recorded_md5) {
+            msg("Configuration file has changed.  This will force an update.");
+            return 1;
+        }
+    } 
+    else {
+        # md5sum is unavailable, check the modify timestamp
+        my $modify_time = (stat($config_file))[9];
+        my $status = OSGCerts::parse_certs_updater_status_file();
+        if(!defined($status->{last_update}) || ($modify_time > $status->{last_update}) ) {
+            msg("Configuration file has changed.  This will force an update.");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+sub record_config_md5sum {
+    my $config_md5 = "$config_file.md5";
+
+    if(!-e $config_file) {
+        log_msg("config file '$config_file' does not exist.  Nothing to write into $config_md5");
+        return;
+    }
+
+    my $md5sum = md5sum($config_file);
+    if($md5sum) {
+        if(open FILE, ">", $config_md5) {
+            print FILE $md5sum; 
+            close(FILE);
+        }
+        else {
+            log_msg("Unable to open $config_md5 for writing: $!");
+        }
+    }
+    else {
+        # If md5sum is unavailable, nothing to write
+        log_msg("md5sum is unavailable, not writing $config_md5");
+    }
+}
+
+
+#---------------------------------------------------------------------
+#
+# Part 2: Check if we have run successfully in the past 24 hours
+#
+#---------------------------------------------------------------------
+
+# Returns a true value to indicate that there has been a successful run in the last 24 hours
+sub check_for_successful_run {
+
+    my $info = OSGCerts::parse_certs_updater_status_file();
+    if(defined($info)) {
+        return 0 if(!defined($info->{status}) || $info->{status} != 1);
+
+        # If the time isn't defined, set it to zero (never)
+        $info->{time} ||= 0;
+
+        # Preserve this value, it will be changed if we update
+        $last_update = $info->{last_update} if(defined($info->{last_update}));
+
+        my $elapsed_time = time() - $info->{time};
+        # 86_400 is the number of seconds in a day
+        return 0 if( ($elapsed_time >= 86_400) || ($elapsed_time < 0) );
+
+        if(defined($info->{default_hour})) {
+            $default_hour = $info->{default_hour};
+
+            # We only want to run during the default hour if we're called from cron.  
+            if( (localtime())[2] == $default_hour && $called_from_cron) {
+                log_msg("INFO: Checking for update because it is the default hour ($default_hour).");
+                return 0;
+            }
+        }
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+#---------------------------------------------------------------------
+#
+# Part 3: Check the pid file for a long-running process, and write the new pid file
+#
+#---------------------------------------------------------------------
+sub pid_file {
+    if(-r $pid_file) {
+        my ($pid) = OSGCerts::slurp($pid_file) =~ /(\d+)/;
+        if(defined($pid) && $pid > 0) {
+            my $process_info = `ps -f -ww -p $pid`;
+
+            if($process_info =~ /osg-update-certs/) {
+                log_msg("A previous osg-update-certs process was found running.  Sending it a kill signal");
+                log_msg("ps output:\n$process_info");
+
+                # Kill the process and clean up temp directories
+                kill 9, $pid;
+                system("rm -fr /tmp/osgcert-*");
+            }
+        }
+    }
+    unlink($pid_file) if(-e $pid_file);
+
+    if(open(PID, '>', $pid_file)) {
+        print PID "$$\n";
+        close(PID);
+    }
+    else {  # If we can't open the pid file, there's not much to do except issue a warning
+        log_msg("WARNING: Failed to write PID file ($pid_file): $!");
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# Part 4: Figure out what to get
+#
+#---------------------------------------------------------------------
+
+sub make_temp_dir {
+    my $work_dir = tempdir("osgcert-XXXXXX", DIR => "/tmp"); 
+    log_msg("Temporary directory is '$work_dir'");
+
+    return $work_dir;
+}
+
+sub get_certs_description {
+    my $description = OSGCerts::fetch_ca_description($config->{cacerts_url}, $working_dir);
+
+    if($description->{valid} == 0) {
+        die_and_write_status("The description file was not found or is incomplete.");
+    }
+
+    if ($debug) {
+        dump_description($description);
+    }
+
+    return $description;
+}
+
+sub dump_description {
+    my $description = $_[0];
+    log_msg("Description:",
+            "    Data version:    '$description->{dataversion}'",
+            "    Certs version:   '$description->{certsversion}'",
+            "    Version info:    '$description->{versiondesc}",
+            "    Tarball:         '$description->{tarball}'",
+            "    Tarball MD5 Sum: '$description->{tarball_md5sum}'",
+            "    Timestamp:       '$description->{timestamp}'");
+}
+
+#---------------------------------------------------------------------
+#
+# Part 5: Download the certs
+#
+#---------------------------------------------------------------------
+sub download_certs_tarball {
+    my $description = $_[0];
+
+    my $tarball_basename = basename($description->{tarball});
+    my $tarball_pathname = "$working_dir/$tarball_basename";
+
+    log_msg("Fetching certificate tarball from $config->{cacerts_url}");
+    log_msg("   ... will fetch into $tarball_pathname:");
+    if(OSGCerts::wget($description->{tarball}, $working_dir) != 0) {
+        die_and_write_status("Failed to fetch the certificate tarball with wget");
+    }
+
+    return $tarball_pathname;
+}
+
+sub verify_certs_tarball {
+    my $description      = $_[0];
+    my $tarball_pathname = $_[1];
+
+    my $md5sum = md5sum($tarball_pathname);
+    if($md5sum) {
+        if ($md5sum eq $description->{tarball_md5sum}) {
+            log_msg("Tarball seems uncorrupted: MD5 checksum is $md5sum\n");
+            return 1;
+        }
+        else {
+            log_msg("Tarball appears to be corrupted: MD5 checksum is $md5sum instead of $description->{tarball_md5sum}\n");
+            return 0;
+        }
+    }
+    else {
+        log_msg("md5sum is unavailable, so we assume certs tarball is good.");
+        return 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# Part 6: Install the certs
+#
+#---------------------------------------------------------------------
+sub unpack_certs {
+    my $description       = $_[0];
+    my $tarball_path      = $_[1];
+    my $install_directory = $_[2];
+
+    log_msg("install_directory = $install_directory");
+    my $unpacked_path = "$install_directory/certificates-$description->{certsversion}";
+
+    chdir($install_directory);
+
+    # If the certificates directory is a real directory (not a symlink to certificates-vv-v) then this 
+    # script cannot install the certificates atomically.  We will complain and exit in this scenario
+    if(!-l "certificates" && -d "certificates") {
+        die_and_write_status("The $install_directory/certificates must be a symlink, but it is a directory.")
+    }
+
+    if (-e $unpacked_path) {
+        my $old_certificates = readlink("certificates");
+        
+        my $old_certificates_basename = basename($old_certificates); # in case it is absolute
+        my $unpacked_basename = basename($unpacked_path);
+
+        # If $unpacked_path equals $old_certificates, we need to be more careful to make sure the update is atomic.
+        if($old_certificates_basename eq $unpacked_basename) {
+            if($force_update || $config_changed) {
+                $unpacked_path .= ".force";
+                $changed_unpack_path = 1;
+                log_msg("Downloading the same version of certificates, because ... ");
+                log_msg(" ... the configuration has changed.") if($config_changed);
+                log_msg(" ... you explicitly requested it with --force.") if($force_update);
+            }
+            else {
+                log_msg("WARNING: The new certificates dir is the same as the existing certificates dir ($old_certificates).");
+                log_msg("WARNING: This may be because /var/lib/ca-certs-version does not exist or is not readable. Check the permissions.");
+                log_msg("WARNING: This script will attempt to write ca-certs-version and exit without making any changes.");
+                return;
+            }
+        }
+        else {
+            # It shouldn't be here, but we are cautious.
+            log_msg("About to remove pre-existing '$unpacked_path'");
+            system("rm -rf $unpacked_path");
+        }
+    }
+
+    # We unpack the certs into a temp directory, then move them to their final location
+    my $unpack_dir = tempdir("certs-unpack-XXXXXX", DIR=>"/tmp");
+    log_msg("Will unpack cert download into '$unpack_dir'");
+
+    if(system("tar --no-same-owner -zxf $tarball_path -C $unpack_dir") != 0) {
+        die_and_write_status("untar failed, see logs (/var/log)");
+    }
+
+    log_msg("Moving cert download into '$unpacked_path'");
+    die("Failed to install certs: $!") if system("mv $unpack_dir/certificates $unpacked_path");
+    system("rm -fr $unpack_dir");
+    system("chmod 0755 $unpacked_path");
+
+    return $unpacked_path;
+}
+
+sub adjust_certs {
+    my ($unpacked_path) = @_;
+
+    my $includes = $config->{includes};
+    my $excludes = $config->{excludes};
+    my $exclude_cas = $config->{exclude_cas};
+
+    my $have_includes = 0;
+    my $have_excludes = 0;
+
+    # We must process excludes before includes so that an admin can exclude a CA from 
+    # the standard distribution, but include a newer version of that CA
+    foreach my $exclude (@$excludes) {
+        $have_excludes = 1;
+        log_msg("Warning: Usage of the 'exclude' statement is deprecated.");
+        
+        my $file = "$unpacked_path/$exclude";
+        while(-l $file) {
+            # This assumes that the symlink is relative
+            $file = "$unpacked_path/" . readlink($file);
+        }
+        
+        if (-r $file) {
+            log_msg("Excluding $file");
+            system("rm $file");
+        }
+        else {
+            log_msg("Warning: Can't find requested exclude: $file");
+        }
+    }
+    
+    foreach my $exclude_ca (@$exclude_cas) {
+        $have_excludes = 1;
+
+        # If the file being excluded is a symlink change the hash to the CA name by
+        # following the symlink.
+        my $file = "$unpacked_path/$exclude_ca.0";
+        while(-l $file) {
+            $file = readlink($file);
+            $exclude_ca = fileparse($file, qr/\.[^.]*/);
+        }
+
+        my @files = glob("$unpacked_path/$exclude_ca.*");
+        if(@files) {
+            log_msg("Excluding CA $exclude_ca");
+            log_msg("Files being removed: " . join(", ", @files));
+            system("rm $unpacked_path/$exclude_ca.*");
+        }
+        else {
+            log_msg("Warning: Can't find requested CA to exclude: $unpacked_path/$exclude_ca");
+        }
+    }
+
+    if ($have_excludes) {
+        # Remove dangling symlinks
+        my @links;
+        for my $file (glob("$unpacked_path/*")) {
+            if(-l $file and (!-e $file)) {
+                push @links, $file;
+                unlink($file);
+            }
+        }
+        if(@links) {
+            log_msg("Removing danglings symlinks: " . join(", ", @links));
+        }
+        else {
+            log_msg("No dangling symlinks to remove");
+        }
+    }
+    else {
+        log_msg("No excludes requested.\n");
+    }
+
+    foreach my $include (@$includes) {
+        $have_includes = 1;
+        if($include =~ /\*$/m) {
+            my @files = glob($include);
+            if(@files > 0) {
+                log_msg("Including wildcard $include");
+                system("cp $include $unpacked_path");
+            }
+            else {
+                log_msg("Warning: Can't find the requested include directory: $include");
+            }
+        }
+        elsif (-r $include) {
+            log_msg("Including $include");
+            system("cp $include $unpacked_path");
+        }
+        else {
+            log_msg("Warning: Can't read requested include: $include");
+        }
+    }
+    if (!$have_includes) {
+        log_msg("No includes requested.\n");
+    }
+}
+
+# It is important to copy any existing relevant CRLs from the old
+# certificate directory because Globus's default behavior is to accept
+# all authenticated certificates if it can't find a CRL, and security
+# folks would rather not accept revoked certificates.
+sub preserve_crls {
+    my $unpacked_path = $_[0];
+    my $install_directory = $_[1];
+    chdir($install_directory);
+
+    my $old_certificates = readlink("certificates");
+    if (defined $old_certificates) {
+        foreach my $crl (`ls -1 $old_certificates/*.r? 2> /dev/null`) {
+            chomp($crl);
+            my $file = basename($crl);
+            (my $hash = $file) =~ s/\.r.//;
+            
+            # In the new set of CAs, do we still have the CA for this CRL?
+            if (-e "$unpacked_path/$hash.0") {
+                log_msg("Preserving CRL $file");
+                system("cp -p $crl $unpacked_path");
+            }
+            else {
+                log_msg("Not preseving CRL $file because there is no CA for it in the update");
+            }
+        }
+    }
+    elsif(-e "certificates") {
+        log_msg("INFO: Not preserving OLD CRLs because previous certificates location is unknown...");
+        log_msg("INFO: ... readlink(\"$install_directory/certificates\") returns undef");
+    }
+}
+
+sub install_certs {
+    my ($unpacked_path, $install_directory) = @_;
+
+    my $unpacked_basename = basename($unpacked_path);
+    chdir($install_directory);
+
+    my $old_certificates = readlink("certificates");
+
+    if($old_certificates) {
+        $old_certificates =~ s|/$|| if($old_certificates); # remove trailing slash if it is present
+
+        # old_certificates might be absolute, so convert it if necessary
+        my $dir = dirname($old_certificates);
+        if($dir eq $install_directory) {
+            $old_certificates = basename($old_certificates);
+        }
+    }
+
+    # We want to atomically install the certificates. One might think we can
+    # do "mv certificates-new certificates", but that's not atomic for directories.
+    # So what we do is make "certificates" be a symlink to the current certificate directory
+    # We then do a rename (which would be mv from the command-line), which will atomically
+    # replace the symlink with the new symlink.
+    
+    system("rm -rf certificates-new");
+    log_msg("Atomically installing certificates");
+
+    if(!$changed_unpack_path) {
+        symlink($unpacked_basename, "certificates-new");
+        rename("certificates-new", "certificates");
+    }
+    else {
+        # Since we are downloading the same certificates we need to take a more careful approach
+        my $temp_dir = $old_certificates . ".tmp";
+        if( -e $temp_dir ){
+            log_msg("Removing old certificates tmp directory: '$temp_dir'");
+            system("rm -fr $temp_dir");
+        }
+
+        # Create a copy of the existing certificates
+        log_msg("Backing up last certificates to $temp_dir");
+        system("cp -pr $old_certificates $temp_dir");
+
+        # Temporarily point the certificates symlink at the copy
+        symlink($temp_dir, "certificates-new");
+        rename("certificates-new", "certificates");
+        
+        # Remove the original certificates, then rename the unpacked_path to this
+        system("rm -rf $old_certificates");
+        system("mv $unpacked_path $old_certificates");
+
+        # Point the symlink back at the original directory (so it's not pointing at the temp_dir)
+        symlink($old_certificates, "certificates-new");
+        rename("certificates-new", "certificates");
+
+        # Set the variables appropriately so that the backup code below works
+        $unpacked_basename = $old_certificates;
+        $old_certificates = $temp_dir;
+    }
+
+    # Then we back up the old certificates
+    # Make sure that the old_certificates does not equal the unpacked path, or we are going
+    # to move the directory that we just created, and the symlink will be broken.  This could
+    # happen if /var/lib/ca-certs-version got accidently deleted or is not readable.
+    if (defined $old_certificates && ($old_certificates ne $unpacked_basename) ) {
+        # 1) remove any old certificates-*.old directories
+        foreach my $certs_dir (glob("certificates-*.old")) {
+
+            # A little paranoia - make sure we don't kill our current certs somehow
+            next if($certs_dir eq $install_directory or $certs_dir eq $unpacked_basename);
+                
+            log_msg("Removing old certificates directory: '$certs_dir'");
+            system("rm -fr $certs_dir");
+        }
+
+        # 2) Backup the last used certificates dir
+        my $backup = $old_certificates . ".old";
+        $backup =~ s/\.tmp//;
+        log_msg("Backing up last certificates to $backup");
+        system("mv $old_certificates $backup");
+    }
+}
+
+sub update_version_info {
+    my ($description, $certs_version_file) = @_;
+
+    my $certs_version_file_dir = dirname($certs_version_file);
+    system("mkdir -p $certs_version_file_dir") if(!-d $certs_version_file_dir);
+
+    open(OUT, '>', $certs_version_file) or die("Cannot write to $certs_version_file: $!");
+    print OUT "$description->{certsversion}\n";
+    close(OUT);
+}
+
+#---------------------------------------------------------------------
+#
+# Part 7: Clean Up
+#
+#---------------------------------------------------------------------
+sub clean_up {
+    if($working_dir && -e $working_dir) {
+        log_msg("Removing $working_dir");
+        chdir("/tmp"); # in case cwd is the about-to-be-removed working_dir
+        system("rm -rf $working_dir");
+    }
+
+    unlink($pid_file) if(-e $pid_file);
+}
+
+#---------------------------------------------------------------------
+#
+# Miscellaneous support functions
+#
+#---------------------------------------------------------------------
+my $opened_log = 0;
+
+sub setup_log() {
+    if (!$opened_log) {
+        my $log_name = $config->{log};
+        my $log_dir = dirname($log_name);
+
+        system("mkdir -p $log_dir");
+
+        OSGCerts::set_log_file_handle(new FileHandle ">>$log_name");
+        $opened_log = 1;
+    } 
+    else {
+        print "Log is already opened (from setup_log)\n";
+    }
+}
+
+sub md5sum {
+    my ($file) = @_;
+
+    if(OSGCerts::which("md5sum")) {
+        my $md5sum_out = `md5sum $file 2> /dev/null`;
+        return (split(/ /, $md5sum_out))[0];
+    }
+    return undef;
+}
+
+sub die_and_write_status {
+    my ($message) = @_;
+
+    write_status_file(0, $message);
+    log_msg("ERROR: osg-update-certs encountered a fatal error.", 
+            "Message - '$message'",
+            "Now exiting.");
+
+    clean_up();
+
+    die("ERROR: $message\ncheck logs in logs for more info.\n");
+}
+
+sub write_status_file {
+    my ($status, $message) = @_;
+
+    my $status_file = OSGCerts::get_certs_updater_status_file_loc();
+    if(!open(STATUS, ">", $status_file)) {
+        log_msg("ERROR: Can not open the status file ($status_file) for writing: $!");
+        return;
+    }
+
+    # If we don't have a default hour set, randomize it now
+    unless(defined($default_hour)) { 
+        $default_hour = int(rand(24));
+        log_msg("INFO: No default hour defined, setting it to $default_hour");
+    }
+
+    my $time = time();
+    print STATUS "# Do not edit this file.  It is used by the osg-update-certs script.\n";
+    print STATUS "# Error message: $message\n" if(defined $message);
+    print STATUS "time - $time\n";
+    print STATUS "status - $status\n";
+    print STATUS "default_hour - $default_hour\n";
+    print STATUS "last_update - $last_update\n";
+    print STATUS "cacerts_url - $config->{cacerts_url}\n";
+
+    close(STATUS);
+}
+
+# Log all updates to a single file that won't be log rotated (it will be small)
+# This will help admins understand what happened and when
+sub log_update {
+    my ($version) = @_;
+    my $log = $config->{log} . ".updates";
+    my $header = "";
+    if(!-e $log) {
+        $header = "#
+# This file is a record of the CA certificate installations and updates
+# It is created by the osg-update-certs program
+# Updates do not normally occur frequently: if you are using
+# osg-update-certs, you should see updates every one to three months
+#\n\n";
+    }
+    
+    my $timestamp = OSGCerts::log_timestamp();
+    if(open(LOG, ">>", $log)) {
+        print LOG $header;
+        print LOG "$timestamp: Updated CA Certificates to version $version.\n";
+    }
+    else {
+        log_msg("Could not open $log for logging successful update: $!");
+    }
+}
+
+sub msg {
+    my ($message) = @_;
+
+    if (!$quiet) {
+        print "$message\n";
+    }
+}

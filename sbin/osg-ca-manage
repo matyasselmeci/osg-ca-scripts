@@ -1,0 +1,1761 @@
+#!/usr/bin/env perl
+
+=head1 NAME 
+
+osg-ca-manage - Manage the OSG CA certificate installation
+
+=head1 SYNOPSIS
+
+    osg-ca-manage [global_options] command 
+
+    global_options =
+        [--verbose]
+        [--force]
+        [--cert-dir <location>]
+        [--help | --usage]
+        [--version]
+        [--auto-refresh]
+
+    command = [manage_command | status_command] 
+
+    status_command = [
+        showCAURL |
+        listCA [--pattern <pattern>] |
+        verify [--hash <CA hash> | --pattern <pattern>] |
+        diffCAPackage |
+        show [--certfile <cert_file> | --hash <CA hash>] |
+        showChain [--certfile <cert_file> | --hash <CA hash>]
+    ]
+
+    manage_command = [
+        setupCA [--location <root|PATH> --url <osg-compat|osg|igtf-compat|igtf|URL>] [--no-update] [--force]|
+        refreshCA |
+        fetchCRL |
+        setCAURL [--url <osg-compat|osg|igtf-compat|igtf|URL>] |
+        add [--dir <local_dir>] --hash <CA hash> |
+        remove --hash <CA hash>
+    ]
+
+=head1 DESCRIPTION
+
+This tool provides a unified interface to manage the OSG CA Certificate installations.
+It provides status commands that allows you to list the CAs and the validity of the CAs 
+and CRLs included in the installation. The manage commands allow you to fetch CAs and CRLs, 
+change the distribution URL, as well as add and remove CAs from your local installation.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--verbose>
+
+Provides you with more information depending on the command context.
+
+=item B<--force>
+
+Forces the command to run ignoring any checks/warnings.  The actual effect is context
+dependent, and this behavior is noted in the command details below.
+
+=item B<--cert-dir> <location>
+
+This location specifies the path CA directory. If this option is not specified then the
+command will look for $X509_CERT_DIR.
+If this directory can not be found, the command will exit with an error.
+
+=item B<--auto-refresh>
+
+This option will indicate if it is permissible to fetch CAs and CRLs as deemed necessary
+by this tool. For example at the end of an addCA/removeCA it would be advisable to refresh
+the CA list and the corresponding CRLs.  The default is not to refresh.
+
+=item B<--version>
+
+Prints the version of the osg-ca-manage tool.
+
+=item B<--help>
+
+Print usage information. Show a brief explanatory text for using osg-ca-manage.
+
+=back 
+
+=head1 STATUS_COMMANDS
+
+=over 4
+
+=item B<showCAURL>
+
+This will print out the distribution location specified in the config file. 
+This command will read osg-update-certs.conf and output cacerts_url.
+
+=item B<listCA> [--pattern <pattern>]
+
+This command will use openssl x509 command on the files in the --dir to provide hash,
+ the subject, the issuer and whether a CA is IGTF or TeraGrid accredited and 
+distribution package are used to download CAs into the directory. 
+--verbose option will provide additional information including all associated dates 
+(CA cert issuance date, and CRL issuance date, and expiry dates). The command will look
+for CA files in the -cert-dir. The <pattern> specified in the option will be matched,
+using perl regex, against the subject/issuer field of the certificate and 
+all CAs are listed if no pattern is given.
+
+=item B<verify> [--hash <CA hash> | --pattern <pattern>]
+
+The verify command will check all CAs (or if specified only the <CA hash> or 
+CAs that match the <pattern>) in the <cert-dir> directory, to see if any CA/CRL 
+have expired or are about to do so. If any expired CA/CRL are found, an error 
+is issued along with the hash of the CA. A warning is issued if either the 
+CA cert or CRL is about the expire within the next 24 Hrs. The --verbose option 
+provides the CA Name, date the CA certs and CRL files are issued, and when they 
+will expire.
+
+=item B<diffCAPackage>
+
+It compare the hash of certificates included in the certificate directory against
+the latest OSG/ITB distribution (based on your cacerts_url) and outputs the
+difference.
+
+=item B<show> [--certfile <cert_file> | --hash <CA hash>]
+
+This command will essentially provide a condensed output of openssl x509 command. It  
+takes in a certificate or proxy file or an hash as input. --verbose option will provide 
+the full text output of openssl command. If --hash option is used we will look 
+for the <CA hash>.0 file in the <cert-dir>.
+
+=item B<showChain> [--certfile <cert_file> | --hash <CA hash>]
+
+This command will output the trust chain of the certificate or proxy. <cert-dir>
+will be used as the directory in which search for ancestor certs will be conducted.
+
+=back
+
+=head1 UPDATE_COMMANDS
+
+=over 4
+
+=item B<setupCA>
+
+This command is used for the inital setup of the CA package. The CA package can be 
+setup to download CAs from any URL.  Keywords are provided for various
+distributions.  For the location to specify, keywords are provided to install into
+'root' (/etc/grid-security). A --no-update 
+option is available. Setting this flag instructs just setup the symlinks only and not
+to run configure osg-update-certs to be run automatically. This option is for
+installations that will not manage their own certificates, but will rely on updates
+through another method (such as RPM, or using osg-update-certs from a different OSG
+installation).  A common use case for this is to have worker-node installations rely
+on the CA certificates being available on an NFS share, and the updating will happen
+on a single node.
+
+
+=item B<refreshCA>
+
+This command run osg-update-certs to check for a new version of the CA distribution.
+If you already have the latest version, but wish to force an update anyways, use the
+--force option.
+
+=item B<fetchCRL>
+
+It retrieves CRLs for all CAs within the directory. 
+This will involve invoking fetch-crl, with appropriate arguments. 
+
+=item B<setCAURL> [--url <osg-compat|osg|igtf-compat|igtf|itb-compat|itb|itb-igtf-compat|itb-igtf|URL>]
+
+This command sets the location from where the CA files. This command will modify 
+osg-update-certs.conf and set the cacerts_url.  Only if --auto-refresh is specified 
+both CA and CRLs are refreshed once the URL change has been made. The distribution <URL> 
+will be required to conform to the OSG CA distribution format (e.g. similar to 
+http://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version). If the <URL> 
+cannot be reached or if it is invalid syntactically (i.e. does not conform to the format requirements) 
+a warning will be issued and no changes will be made. The --force option can be used to force 
+a change ignoring the warning (Of course --force will give a warning that osg-update-certs
+will no longer work and make the change anyway.) If URL is left unspecified the 
+<URL> will be set to OSG default. We also define keywords for old and new format CAs from OSG and ITB
+caches as shortcuts to indicate well-known CA URLs.
+ 
+=item B<add> [--dir <local_dir>] --hash <CA hash>
+
+The --hash argument is required. If --dir is not specified we will assume that the user 
+wants to include a standard CA he has previously excluded (otherwise --dir is required). 
+If <CA hash> is not known or it is already included tool will provide appropriate error/warning 
+information. In the common case this command will add include lines for <local_dir>/<CA hash>.*, (except .r0) 
+into the osg-update-certs.conf file. Lastly the command will invoke functions refresh 
+the CAs and fetch CRLs (if --auto-refresh is specified). This command will also do some preliminary 
+error checks, e.g. make sure that “.0”, “.crl_url” files exist and that --dir is different 
+than --cert-dir. 
+ 
+=item B<remove> --hash <CA hash>
+
+This command will be complementary to add and would either add an exclude or remove an 
+include depending on the scenario. This command will also refresh CA and CRLs (when specified). 
+osg-update-certs do the job of actually removing cert files, we will still do the preliminary 
+error checks to make sure that the certs that are being removed are included in the first place. 
+
+=back
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Time::Local;
+use File::Basename;
+use File::Temp qw/ tempdir /;
+
+use OSGCerts;
+
+#Constants
+my $version='osg-ca-manage-1.0';
+my $warn = 24*60*60; # Warning threshhold about expiring CA and CRLs
+my $osg_old_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version";
+my $osg_new_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version-new";
+my $igtf_old_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-old";
+my $igtf_new_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
+my $itb_ca_url = "http://software-itb.grid.iu.edu/pacman/cadist/ca-certs-version";
+my $itb_new_ca_url = "http://software-itb.grid.iu.edu/pacman/cadist/ca-certs-version-new";
+my $itb_igtf_old_ca_url = "http://software-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-old";
+my $itb_igtf_new_ca_url = "http://software-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
+
+#Global Variables
+my $verbose = 0;
+my $force = 0;
+my $noupdate = 0;
+my $cert_dir;
+my $dir;
+my $url;
+my $install_location;
+my $auto_refresh = 0;
+my $certs_file;
+my $update_certs_conf;
+my $config;
+my $openssl;
+my %source;
+my %source_pem;
+my $igtf_format=0;
+my $cadir_ar; #ca directory to be added or removed
+my $caname_ar; #ca file to be added or removed
+
+main();
+
+exit 0;
+
+
+#---------------------------------------------------------------------
+#
+# Main subroutine 
+#
+#---------------------------------------------------------------------
+
+sub main {
+    my $pattern;
+    my $hash;
+    my $is_setup=0;
+
+    # Read in command line options
+    GetOptions("verbose"       => \$verbose,
+               "force"         => \$force,
+               "cert-dir=s"    => \$cert_dir,
+               "auto-refresh"  => \$auto_refresh,
+               "pattern=s"     => \$pattern,
+               "hash=s"        => \$hash,
+               "url=s"         => \$url,
+               "location=s"    => \$install_location,
+               "dir=s"         => \$dir,
+               "certfile=s"    => \$certs_file,
+               "cadir=s"       => \$cadir_ar,
+               "caname=s"      => \$caname_ar,
+               "version"       => \&version,
+               "no-update"     => \$noupdate,
+               "help|usage"    => \&usage);
+
+    OSGCerts::initialize("osg-ca-manage");
+
+    # Read in the command 
+    if ($#ARGV != 0) {
+        print "Please specify exactly one command to osg-ca-manage.\n";
+        usage();
+    }
+    my $command = lc($ARGV[0]);
+
+    # Determine the certificate directory
+    if ( (!$cert_dir || !-d $cert_dir) && $command ne "setupca") {
+        my $supplied_cert_dir = $cert_dir if ($cert_dir);
+
+        if (defined $ENV{X509_CERT_DIR} && -d $ENV{X509_CERT_DIR}) {
+            $cert_dir = $ENV{X509_CERT_DIR};
+        }
+	elsif (-e "/etc/grid-security/certificates") {
+	    $cert_dir = "/etc/grid-security/certificates";
+	}
+        else {
+            print "No CA Certificate directory was found. Please specify the certificate directory using --cert-dir option.\n";
+            exit 1;
+        }
+
+        if ($supplied_cert_dir) {
+            print "The supplied certificate directory, '$supplied_cert_dir' does not exist or is not a directory...\n";
+            print "...using $cert_dir as CA certificate directory instead.\n";
+        }
+    }
+
+
+    if ( ($command eq "setupca") and $noupdate and $url ) {
+        print "The --url and --no-update options are mutually exclusive.\n";
+        exit 1;
+    }
+
+    # Conf file location
+    $update_certs_conf = OSGCerts::get_updater_conf_file_loc();
+    if($command ne "setupca"){
+        $igtf_format = check_package_format();
+    }
+
+    if($command eq "showcaurl") {
+        # Read in the configuration data.
+        check_rpm();
+        read_config_file();
+        print "$config->{cacerts_url}\n";
+    }
+    elsif($command eq "listca") {
+        check_openssl();
+        check_rpm();
+        read_config_file();
+        search_ca_pattern($pattern,0);
+    }
+    elsif($command eq "verify") {
+        check_openssl();
+        my $ret = 0;
+        if ($hash) {
+            $ret = verify_ca_hash($hash);
+        }
+        else {
+            $ret = verify_ca_pattern($pattern);
+        }
+        if ($ret eq "0") {
+            print "VERIFY - OK\n";
+        }
+        elsif ($ret eq "2") {
+            print "VERIFY - WARNING\n";
+        }
+        else {
+            print "VERIFY - ERROR\n";
+        }
+        exit $ret;
+    }
+    elsif($command eq "diffcapackage") {
+        check_rpm();
+        check_openssl();
+        read_config_file();
+        my $success = get_distribution_certs_list();
+        if (! $success) {
+            print "The list of CA certificates in distribution could not be downloaded\n";
+            print "Most likely you have a cacerts_url different from the standard OSG/ITB.\n";
+            print "We cannot determine the diff. Exiting.\n";
+            exit 1;
+        }
+        my $ret_code = find_diff();
+        if($ret_code == 0) {
+            print "Your packages were found to be consistent with the standard OSG/ITB distribution.\n"
+            }
+        exit $ret_code;
+    }
+    elsif($command eq "show") {
+        check_openssl();
+        show_single_ca($hash);
+    }
+    elsif($command eq "showchain") {
+        check_openssl();
+        show_chain_ca($hash);
+    }
+    elsif($command eq "refreshca") {
+        check_rpm();
+        is_writable();
+        fetch_ca();
+    }
+    elsif($command eq "fetchcrl") {
+        check_rpm();
+        is_writable();
+        fetch_crl();
+    }
+    elsif($command eq "setupca") {
+        check_rpm();
+        read_config_file();
+        setup_ca();
+        exit 0;
+    }
+    elsif($command eq "setcaurl") {
+        # Read in the configuration data.
+        check_rpm();
+        read_config_file();
+        is_writable();
+        my $ret_code = set_caurl($is_setup);
+        
+        exit $ret_code;
+    }
+    elsif($command eq "add") {
+        # Read in the configuration data.
+        check_rpm();
+        read_config_file();
+        is_writable();
+
+        if (defined $caname_ar && defined $cadir_ar) {
+            print "Please specify either certificate file (--caname) or directory (--cadir) to be removed not both.\n";
+            exit 1;
+        }
+        if (!defined $caname_ar && !defined $cadir_ar) {
+            print "Please specify either certificate file (--caname) or directory (--cadir) to be removed.\n";
+            exit 1;
+        }
+        my $type;
+        if(defined $caname_ar){
+           $type = "file";
+        }elsif(defined $cadir_ar){
+           $type = "dir";
+        }
+
+        my $added = add_ca($type);
+        my $ret_code = $added;
+        if ($added) {
+            $ret_code = write_config_file($is_setup);
+        }
+        exit $ret_code;
+    }
+    elsif($command eq "remove") {
+        check_openssl();
+        check_rpm();
+        read_config_file();
+        is_writable();
+
+        if (defined $caname_ar && defined $cadir_ar) {
+            print "Please specify either certificate file (--caname) or directory (--cadir) to be removed not both.\n";
+            exit 1;
+        }
+        if (!defined $caname_ar && !defined $cadir_ar) {
+            print "Please specify either certificate file (--caname) or directory (--cadir) to be removed.\n";
+            exit 1;
+        }
+        my $type;
+        if(defined $caname_ar){
+           $type = "file";
+        }elsif(defined $cadir_ar){
+           $type = "dir";
+        }
+
+        my $removed = remove_ca($type);
+        my $ret_code = $removed;
+        if ($removed) {
+            $ret_code=write_config_file($is_setup);
+        }
+        exit $ret_code;
+    }
+    else { 
+        print "Unrecognized command\n";
+        usage();
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# version: Prints version of the tool
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+
+sub version {
+    print "$version\n";
+    exit 0;
+}   
+
+#---------------------------------------------------------------------
+#
+# usage: Print usage information. 
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+
+sub usage {
+    setupca_usage() if($ARGV[0] and lc($ARGV[0]) eq "setupca");
+
+    print "    osg-ca-manage [global_options] command \n";
+    print "    global_options =
+        [--verbose]
+        [--force]
+        [--cert-dir <location>]
+        [--help | --usage]
+        [--version]
+        [--auto-refresh]
+
+    command = [manage_command | status_command] 
+
+    status_command = [
+        showCAURL |
+        listCA [--pattern <pattern>] |
+        verify [--hash <CA hash>  | --pattern <pattern>] |
+        diffCAPackage |
+        show [--certfile <cert_file> | --hash <CA hash>] |
+        showChain [--certfile <cert_file> | --hash <CA hash>]
+    ]
+
+    manage_command = [
+        setupCA --location <root|PATH> [--url <osg-compat|osg|igtf-compat|igtf|URL> --no-update --force] |
+        refreshCA |
+        fetchCRL |
+        setCAURL [--url <osg-compat|osg|igtf-compat|igtf|URL>] |
+        add [--cadir <localdir> | --caname <CA>]
+        remove [--cadir <localdir> | --caname <CA>]
+    ]\n";
+    exit 1;
+}
+
+
+sub setupca_usage {
+
+    print "osg-ca-manage setupca --location [root|<PATH>] --url [osg-compat|osg|igtf-compat|igtf|<URL>] --no-update --force
+  Location:
+    root  - install into /etc/grid-security
+    PATH  - install into PATH (e.g. /nfs/certificates)
+
+  URL:
+    osg - use the OSG GOC distribution
+    itb - use the ITB GOC distribution (not recommended for production sites)
+    URL - use the distribution at URL (e.g. http://your.site.edu/ca-certificates-manifest-file)
+
+  No Updates:
+    This option is an alternative to setting up CAs to be updated from a URL. 
+    Use this option if you only want to setup symlinks and do not wish to install
+    certs now, or run osg-update-certs from this installation. This option is for
+    installations that will not manage their own certificates, but will rely on
+    updates through another method (such as RPM, or using osg-update-certs from a
+    different installation).  A common use case for this is to have worker-node
+    installations rely on the CA certificates being available on an NFS share,
+    and the updating will happen on a single node.
+
+  Force:
+    Supress checks.
+\n";
+    exit 1;
+}
+   
+
+#---------------------------------------------------------------------
+#
+# read_config_file: Read in the osg-update-certs.conf file and
+# populate $config variable.
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub read_config_file {
+    $config = OSGCerts::read_updater_config_file();
+
+    if(!$config) {
+        print "Error reading osg-update-certs configuration.\n";
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# read_url: Read in the command line url passed and
+# set $url variable correctly
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub read_url {
+    if (!defined $url) {
+        print "URL not specified. Please specify the URL you want to use.\nYou could also specify keywords osg/itb as values for --url option and the correct osg/itb URL will be used.\n\n";
+        exit 1;
+    }
+    elsif ( $url =~ /^osg-compat$/i ) {
+        $url = $osg_old_ca_url;
+    }
+    elsif ( $url =~ /^osg$/i ) {
+        $url = $osg_new_ca_url;
+    }
+    elsif ( $url =~ /^igtf-compat$/i ) {
+        $url = $igtf_old_ca_url;
+    }   
+    elsif ( $url =~ /^igtf$/i ) {
+        $url = $igtf_new_ca_url;
+    }   
+    elsif ( $url =~ /^itb-compat$/i ) {
+        $url = $itb_ca_url;
+    }
+    elsif ( $url =~ /^itb$/i ) {
+        $url = $itb_new_ca_url;
+    }
+    elsif ( $url =~ /^itb-igtf-compat$/i ) {
+        $url = $itb_igtf_old_ca_url;
+    }
+    elsif ( $url =~ /^itb-igtf$/i ) {
+        $url = $itb_igtf_new_ca_url;
+    }
+}
+#---------------------------------------------------------------------
+#
+# write_config_file: Write the osg-update-certs.conf file using
+# the values in $config. Runs fetch_ca and fetch_crl when config
+# file is updated and auto-refresh option is enabled.
+# Input  : $is_setup: 1 - if called from setup; 0 - otherwise
+# Output : 1 - file successfully written; 0 - file not written
+#
+#---------------------------------------------------------------------
+
+sub write_config_file {
+    my ($is_setup) = @_;
+    my $content = "# Configuration file for osg-update-certs
+
+# This file has been regenerated by osg-ca-manage, which removes most
+# comments.  You can still manually modify it, any manual change will
+# be preserved if osg-ca-manage is used again.
+
+## The parent location certificates will be installed at.
+install_dir = " . $config->{install_dir} . "\n";
+
+    $content .= "
+## cacerts_url is the URL of your certificate distribution
+cacerts_url = " . $config->{cacerts_url} . "\n";
+    
+    $content .= "
+## log specifies where logging output will go
+";
+    if (!$config->{log}) {
+        $content .= "log = /var/log/osg-update-certs.log\n";
+    }
+    else {
+        $content .= "log = " . $config->{log} . "\n";
+    }
+
+
+    $content .= "
+## include specifies files (full pathnames) that should be copied
+## into the certificates installation after an update has occured.
+";
+    my $includes = $config->{includes};
+    foreach my $inc (@$includes) {
+        $content .= "include=$inc\n";
+    }
+    $content .= "
+## exclude_ca specifies a CA (not full pathnames, but just the hash
+## of the CA you want to exclude) that should be removed from the
+## certificates installation after an update has occured.
+";
+
+    my $exclude_cas = $config->{exclude_cas};
+    foreach my $ex (@$exclude_cas) {
+        $content .= "exclude_ca = $ex\n";
+    }
+    $content .= "\n";
+
+    if (!defined $config->{debug} || $config->{debug} eq "") {
+        $content .= "debug = 0\n";
+    }
+    else {
+        $content .= "debug = $config->{debug}\n";
+    }
+
+    my $return_code;
+    if(!open(OUT, '>', $update_certs_conf)) {
+	print STDERR "Can not open $update_certs_conf for writing: $!\n";
+	$return_code = undef;
+    }
+    else {
+	print OUT $content;
+	close(OUT);
+	$return_code = 1;
+    }
+    if(!$is_setup) { #Do not fetchca and crls during setup
+        if ($auto_refresh) {
+            fetch_ca();
+            fetch_crl();
+        }
+        else {
+            print "NOTE:\n";
+            print "\tYou did not specify the --auto-refresh flag.\n";
+            print "\tSo the changes made to the configuration will not be reflected till the next time\n";
+            print "\twhen CAs and CRLs are updated respectively by osg-update-certs and fetch-crl running from cron.\n";
+            print "\tRun \`osg-ca-manage refreshCA\` and \`osg-ca-manage fetchCRL\` to commit your changes immediately.\n";
+        }
+    }
+    return $return_code;
+}
+
+#---------------------------------------------------------------------
+#
+# search_ca_pattern: Searches the certificate directory ($dir or 
+# $cert_dir) and lists information of CA that matches the pattern
+# (It is used by listca and showchain commands)
+# Input  : pattern (in perl regular expression),
+#          int : 0- for list all CA, 1 - for show chain
+# Output : Issuer (for show chain), "" for list ca
+#
+#---------------------------------------------------------------------
+
+sub search_ca_pattern {
+    my ($local_pattern, $show_chain) = @_;
+
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+    $local_pattern = "\\w*" if (! defined $local_pattern);
+    my $success = 0;
+    $success = get_distribution_certs_list() if (!$show_chain);
+    #my $ext = "*.0";
+    #$ext = "*.pem" if($igtf_format==1);
+
+ #  foreach my $local_certs_file (`ls -1 $dir/$ext 2> /dev/null`) {
+    foreach my $local_certs_file (`find $dir/*.0 $dir/*.pem -type f 2> /dev/null`) {
+        chomp($local_certs_file);
+        my $cert_values = `$openssl x509 -in $local_certs_file -subject -issuer -hash -noout 2>/dev/null`;
+        my @values = split /\n/, $cert_values;
+        my $subject = (split /subject=/, $values[0])[1];
+        my $issuer = (split /issuer=/, $values[1])[1];
+        chomp(my $local_hash = $values[2]);
+        if (! $show_chain) {
+            if ($subject =~ /$local_pattern/i || $issuer =~ /$local_pattern/i ) {
+                my $accreditation = "";
+                if ($success) {
+                    if (!defined $source{$local_hash} ) {
+                        $accreditation = "Unknown;"
+                    }elsif ($source{$local_hash} =~ /I/i) {
+                        $accreditation .= "IGTF;";
+                    }elsif ($source{$local_hash} =~ /T/i) {
+                        $accreditation .= "TeraGrid;";
+                    }elsif ($source{$local_hash} =~ /N/i) {
+                        $accreditation .= "Non IGTF;";
+                    }else {
+                        $accreditation .= "Unknown;";
+                    }
+                    
+                }
+                $accreditation = "Unknown;" if ($accreditation eq "");
+
+                my $status_info = OSGCerts::parse_certs_updater_status_file();
+                my $cacerts_url = $status_info->{cacerts_url} || "Unknown";
+                my $localfname=basename($local_certs_file);
+                print "FileName=$localfname;Hash=$local_hash; Subject=$subject; Issuer=$issuer; Accreditation=$accreditation Status=$cacerts_url\n";
+                if ($verbose) {
+                    $cert_values = `$openssl x509 -in $local_certs_file -dates -noout 2>/dev/null`;
+                    @values = split /\n/, $cert_values;
+                    print "\tCA Dates : $values[0]; $values[1]\n";
+                    my $local_crl_file =  "$dir/$local_hash.r0";
+                    if (-e $local_crl_file) {
+                        my $crl_values = `openssl crl -in $local_crl_file -lastupdate -nextupdate -noout 2>/dev/null`;
+                        @values = split /\n/, $crl_values;
+                        print "\tCRL Dates: $values[0]; $values[1]\n\n";
+                    }
+                    else {
+                        print "\tCRL file for $local_hash not found.\n\n";
+                    }
+                
+                }
+            }
+        }
+        else {
+            # Subject and issuer have been transformed here to remove the ( and ) that occurs 
+            # in one certificate and causes problem with pattern matching during showchain.
+            # For listca command since the pattern is coming from the user they will, if needed 
+            # put in the correct escape character.
+            my $local_subject = $subject;
+            my $local_issuer = $issuer;
+            $subject =~ s/\)/_/g;
+            $subject =~ s/\(/_/g;
+            $issuer =~ s/\)/_/g;
+            $issuer =~ s/\(/_/g;
+            # For show chain the pattern passed requires an exact match, mon exact match can cause endless loop e.g. Hash: 34a509c3
+            if ($subject =~ /^$local_pattern$/i) {
+               print "=> Hash=$local_hash \n\tSubject=$local_subject \n\tIssuer=$local_issuer\n";
+                if ($verbose) {
+                    my $out = `$openssl x509 -text -noout -in $local_certs_file 2>/dev/null`;
+                    print "$out\n";
+                }
+                # Return up chain issuer of the current certificate
+                # If subject = issuer  you have reached the end of chain 
+                return $issuer if ($show_chain && $subject ne $issuer);
+                return "" if ($show_chain && $subject eq $issuer);
+            }
+        }
+    }
+#    print "Self Signed root-CA not found $local_pattern \n" if $show_chain;
+    return "";
+}
+
+#---------------------------------------------------------------------
+#
+# show_ca_file: Show details of a particular CA file
+# Input  : File (Path to the certificate file to be viewed)
+# Output : Issuer of the cerifificate
+#
+#---------------------------------------------------------------------
+sub show_ca_file {
+    my ($local_certs_file) = @_;   
+
+    # If no parameter is passed try to use the $certs_file passed in command line
+    # If neither can be found quit.
+    $local_certs_file = $certs_file if (! defined $local_certs_file || ! -e $local_certs_file && defined $certs_file);    
+
+    if (!defined $local_certs_file || ! -e $local_certs_file ) {
+        print "Certificate file '$local_certs_file' not found.\n";
+        exit 1;
+    }
+    # If the file passed in is a proxy, then list the details of proxy and its issuer
+    $local_certs_file = handle_proxy($local_certs_file);
+
+    my $cert_values = `$openssl x509 -in $local_certs_file -subject -issuer -hash -noout 2>/dev/null`;
+    my @values = split /\n/, $cert_values;
+    my $subject =  (split /subject=/, $values[0])[1];
+    my $issuer =  (split /issuer=/, $values[1])[1];
+    chomp(my $local_hash =   $values[2]);
+
+    print "Hash=$local_hash\n\tSubject=$subject\n\tIssuer=$issuer\n";
+    if ($verbose) {
+        my $out = `$openssl x509 -text -noout -in $local_certs_file 2>/dev/null`;
+        print "$out\n";
+    }
+    if ($subject eq $issuer) {
+        return "";
+    }
+    return $issuer;
+}
+
+#---------------------------------------------------------------------
+#
+# handle_proxy: Show details of a particular CA file
+# Input  : File (Path to the certificate file to be checked for proxy)
+# Output : File (Path to the rest of the certificate)
+#
+#---------------------------------------------------------------------
+sub handle_proxy {
+    my ($local_certs_file) = @_;
+    my @contents = OSGCerts::slurp($local_certs_file);
+    my $count = 0;
+    my $location = 0;
+    my $i = 0;
+    foreach my $line (@contents) {
+        if ($line =~ /^-----BEGIN CERTIFICATE-----$/) {
+            $count++;
+            $location = $i;
+        }
+        $i++;
+    }
+    return $local_certs_file if $count<=1;
+
+    #This file is a proxy
+    my $cert_values = `$openssl x509 -in $local_certs_file -subject -issuer -hash -noout 2>/dev/null`;
+    my @values = split /\n/, $cert_values;
+    my $subject =  (split /subject=/, $values[0])[1];
+    my $issuer =  (split /issuer=/, $values[1])[1];
+    chomp(my $local_hash =   $values[2]);
+    
+    print "Hash=$local_hash\n\tSubject=$subject\n\tIssuer=$issuer\n";
+    if ($verbose) {
+        my $out = `$openssl x509 -text -noout -in $local_certs_file 2>/dev/null`;
+        print "$out\n";
+    }
+    print "=> ";
+
+    #Delete the proxy portion and create a new file
+    my $working_dir = tempdir("osgcert-XXXXXX", TMPDIR => 1, CLEANUP => 1);
+    my $new_local_file = "$working_dir/" . basename($local_certs_file);
+
+    open FILE, ">$new_local_file" || die $!;
+    for($i = $location; $i <= $#contents; $i++) {
+        print FILE $contents[$i]; 
+    }
+    close FILE;
+    return $new_local_file;
+}
+
+#---------------------------------------------------------------------
+#
+# show_ca_hash: Show information of CA in $dir or $cert_dir that
+# matches the hash
+# Input  : Hash (of the certificate file to be viewed)
+# Output : Issuer of the cerifificate 
+#
+#---------------------------------------------------------------------
+sub show_ca_hash {
+    my ($local_hash) = @_;    
+    # $local_hash = $hash if (! defined $local_hash || $local_hash eq 0);
+    $dir = $cert_dir if (! defined $dir || -d $dir);
+
+    return show_ca_file("$dir/$local_hash.0");
+}
+
+#---------------------------------------------------------------------
+#
+# show_single_ca: Provides information about a particular CA.
+# It takes in an hash as an argument. If hash is not provided
+# it looks for the certfile argument. It returns the $issuer of
+# certificate. It is used by show and showchain commands. In the 
+# later it is used to bootstrap the first link in the chain
+# Input  : Hash (of the certificate file to be viewed)
+# Output : Issuer of the cerifificate
+#
+#---------------------------------------------------------------------
+sub show_single_ca {
+    my ($local_hash) = @_;    
+    # $local_hash = $hash if (! defined $local_hash || $local_hash eq 0);
+    if (defined $local_hash) {
+        return show_ca_hash($local_hash);
+    }
+    elsif (defined $certs_file) {
+        return show_ca_file($certs_file);
+    }
+    else {
+        print "Please specify either --hash or --certfile\n";
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# show_chain_ca: Show information the chaining information of the CA
+# Input  : Hash (of the certificate file to be viewed)
+# Output : None
+#
+#---------------------------------------------------------------------
+sub show_chain_ca {
+    my ($local_hash) = @_;    
+    my $issuer = show_single_ca($local_hash);
+    while ($issuer ne "") {
+        $issuer = search_ca_pattern($issuer,1);
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# verify_ca_hash: Verify the CA and CRL file using a given hash
+# Input  : Hash (of the certificate file to be verified)
+# Output : 0 - Verify succeded, 1 - Errors, 2 - Warnings
+#
+#---------------------------------------------------------------------
+sub verify_ca_hash {
+    my ($local_hash) = @_;  
+    my $ret = 0; #0-OK, 1-ERROR, 2-WARN
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+
+    # Verifying CAs
+    my $local_certs_file = "$dir/$local_hash.0";
+    if (!defined $local_certs_file || ! -e $local_certs_file ) {
+        print "Certificate file for $local_hash ('$local_certs_file') missing. VERIFY FAILED\n";
+        return 1;
+    }
+    chomp(my $cert_values = `$openssl x509 -in $local_certs_file -subject -noout 2>/dev/null`);
+    my $subject =  (split /subject=/, $cert_values)[1];
+
+    my $verify_ca = `$openssl verify -CApath $dir $local_certs_file 2>/dev/null`;
+    chomp($verify_ca = (split /:/, $verify_ca)[1]);
+    if ($verify_ca !~ /OK/) {
+        print "Subject: $subject\n";
+        print "\tVERIFYING CA for $local_hash - FAILED ('$verify_ca')\n";
+        return 1;
+    }
+
+    # Now checking for warning
+    $cert_values = `$openssl x509 -in $local_certs_file -dates -noout 2>/dev/null`;
+    my @values = split /\n/, $cert_values;
+    my $start_time =  (split /notBefore=/, $values[0])[1];
+    my $end_time =  (split /notAfter=/, $values[1])[1];
+    # Parsing string of form: Oct  5 08:00:00 2008 GMT
+    my @tmp_end_date = split /\s+/, $end_time;
+    my @tmp_end_time = split /:/, $tmp_end_date[2];
+    my $unix_end_time = gmt_to_unix_time($tmp_end_date[0],$tmp_end_date[1],$tmp_end_date[3], $tmp_end_time[0],  $tmp_end_time[1],  $tmp_end_time[2]);
+    my $now = time();
+    if($now + $warn >= $unix_end_time) {
+        print "Subject: $subject\n";
+        print "\tVERIFYING CA for $local_hash - WARNING (Certificate expires at $end_time)\n";
+        $ret = 2;
+    }
+    else {
+        if ($verbose) {
+            print "Subject: $subject\n";
+            print "\tVERIFYING CA for $local_hash - $verify_ca\n";
+        }
+    }
+
+    #Verifying CRLs
+    my $local_crl_file = "$dir/$local_hash.r0";
+    if (!defined $local_crl_file || ! -e $local_crl_file ) {
+        #print "Subject: $subject\n";
+        print "CRL file for $local_hash missing. Skipping.\n" if ($verbose);
+        return 0;
+    }
+    # Apprently the output "verify OK" is directed to stderr.
+    my $verify_crl = `$openssl crl -CApath $dir -in $local_crl_file -noout 2>&1`;
+    chomp($verify_crl);
+    if ($verify_crl !~ /verify OK/) {
+        print "Subject: $subject\n";
+        print "\tVERIFYING CRL for $local_hash - FAILED ('$verify_crl')\n";
+        return 1;
+    }
+    
+    chomp(my $crl_values = `openssl crl -in $local_crl_file -nextupdate -noout 2>/dev/null`);
+    my $crl_end_time =  (split /nextUpdate=/, $crl_values)[1];
+    @tmp_end_date = split /\s+/, $crl_end_time;
+    @tmp_end_time = split /:/, $tmp_end_date[2];
+    $unix_end_time = gmt_to_unix_time($tmp_end_date[0],$tmp_end_date[1],$tmp_end_date[3], $tmp_end_time[0],  $tmp_end_time[1],  $tmp_end_time[2]);
+    if($now >= $unix_end_time) {
+        print "Subject: $subject\n";
+        print "\tVERIFYING CRL for $local_hash - ERROR (CRL expired at $crl_end_time)\n";
+        $ret=1 ;
+    }
+    elsif($now + $warn >= $unix_end_time) {
+        print "Subject: $subject\n";
+        print "\tVERIFYING CRL for $local_hash - WARNING (CRL expires at $crl_end_time)\n";
+        $ret=2 ;
+    }
+    else {
+        print "\tVERIFYING CRL for $local_hash - $verify_crl\n" if $verbose;
+    }
+
+    return $ret;
+}
+
+#---------------------------------------------------------------------
+#
+# verify_ca_pattern: Verify the CA and CRL file using a given pattern
+# Input  : pattern to search (in perl regular expression)
+# Output : 0 - Verify succeded, 1 - Errors, 2 - Warnings
+#
+#---------------------------------------------------------------------
+sub verify_ca_pattern {
+    my ($local_pattern) = @_;
+    my $ret = 0;
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+    $local_pattern = "\\w*" if (! defined $local_pattern); 
+    foreach my $local_certs_file (`ls -1 $dir/*.0 2> /dev/null`) {
+        chomp($local_certs_file);
+        my $cert_values = `$openssl x509 -in $local_certs_file -subject -issuer -hash -noout 2>/dev/null`;
+        my @values = split /\n/, $cert_values;
+        my $subject =  (split /subject=/, $values[0])[1];
+        my $issuer =  (split /issuer=/, $values[1])[1];
+        chomp(my $local_hash =   $values[2]);
+        if ($subject =~ /$local_pattern/i || $issuer =~ /$local_pattern/i ) {
+            my $current_return = verify_ca_hash($local_hash);
+            if($current_return ne 0) {
+                if ($current_return eq 1) {
+                    $ret = 1;
+                }
+                elsif ($ret eq 0) {
+                    $ret = 2
+                }
+            }
+        }
+    }
+    return $ret;
+}
+
+#---------------------------------------------------------------------
+#
+# get_distribution_list : Get a list of CA included in the distribution.
+# It populates the %source hash and tell it if that has was included in
+# IGTF or TeraGrid distribution
+# Input  : None
+# Output : 0 - Unsuccessful; 1 - Success
+#
+#---------------------------------------------------------------------
+sub get_distribution_certs_list {
+    my $local_url;
+    if($config->{cacerts_url} =~ m/^http:\/\/software.grid.iu.edu/) { 
+        $local_url="http://software.grid.iu.edu/pacman/cadist/INDEX-new.txt";
+    }
+    elsif($config->{cacerts_url} =~ m/^http:\/\/software-itb.grid.iu.edu/) { 
+        $local_url="http://software-itb.grid.iu.edu/pacman/cadist/INDEX-new.txt";
+    }
+    else {
+        # Don't know the url of description file, for a non OSG/ITB certs distribution
+        return 0;
+    }
+    my $working_dir = tempdir("osgcert-XXXXXX", TMPDIR => 1, CLEANUP => 1);
+    my $ca_index_file = "$working_dir/" . basename($local_url);
+
+    OSGCerts::wget($local_url, $working_dir, 1);
+    if (!-e $ca_index_file) {
+        #Download unsuccessful.
+        return 0;
+    }
+
+    my @contents = OSGCerts::slurp($ca_index_file);
+    foreach my $line (@contents) {
+        next if($line =~ /^Hash/i);
+        next if($line =~ /^--/i);
+        next if($line =~ /^\s*$/i); #Empty lines
+        next if($line =~ /^\s*\#/i); #allow comments in future
+        last if($line =~ /^Sources/i); #Reached end of file
+        my @line_content = split /\s+/, $line;
+        my $hash = $line_content[0];
+        my $pem =  fileparse($line_content[2], qr/\.[^.]*/);
+
+        my $hash_name="";
+        for (my $i=1; $i<=($#line_content-2);$i++) {
+            $hash_name.=" ".$line_content[$i];
+        }
+        $source{"${hash}_name"} = $hash_name;
+        $source_pem{"${pem}_name"} = $hash_name;
+
+        my $local_source = $line_content[$#line_content];
+        $source{$hash} = $local_source;
+        $source_pem{$pem} = $local_source;
+    }
+    return 1;
+}
+
+#---------------------------------------------------------------------
+#
+# find_diff : Prints the difference between CAs present in the 
+# certificate directory and the latest distribution from OSG/ITB
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub find_diff {
+    # This diff list just checks the CA hashes 
+    # If the hash has been excluded and then included from a local source. We will not put it in the diff list.
+    my $return_code = 0;
+    #my $ext = "*.0";
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+    #my $format = check_package_format();
+    #if($format==1){
+    #    $ext = "*.pem"; # extention is *.pem for new format *.0 for old format
+    #}
+    # Find certs that were added
+    foreach my $local_certs_file (`find $dir/*.0 $dir/*.pem -type f 2> /dev/null`) {
+        chomp($local_certs_file);
+        my $current_hash =   fileparse($local_certs_file, qr/\.[^.]*/);
+        #if($igtf_format==0){
+        next if exists $source{$current_hash}; # Included in the standard CA distribution.
+        #}elsif($igtf_format==1){
+        next if exists $source_pem{$current_hash}; # Included in the standard CA distribution.
+        #}
+        # A local certificate has been found
+        my $cert_values = `$openssl x509 -in $local_certs_file -subject -noout 2>/dev/null`;
+        my @values = split /\n/, $cert_values;
+        my $subject =  (split /subject=/, $values[0])[1];
+        print "> $current_hash. [Certificate with subject ($subject) has been included locally in your installation]\n";
+        $return_code = 1;
+    }
+    # Find certs that were removed
+    if($igtf_format==0){
+        for my $current_hash ( keys %source ) {
+            next if ($current_hash =~ /_name$/); #Ignore the hashes that end in _name, since these are just the identify names of the hashes
+            next if (-e "$dir/$current_hash.0");
+
+            # A certificate has been removed
+            my $accreditation = "";
+            if ($source{$current_hash} =~ /I/i) {
+                $accreditation.=" IGTF";
+            }
+            if ($source{$current_hash} =~ /T/i) {
+                $accreditation.=" TeraGrid";
+            }
+            $accreditation = "Unknown" if($accreditation eq "");
+            my $hashname = $source{$current_hash."_name"};
+            $hashname = "Unknown" if (! $hashname);
+            print "< $current_hash. [Certificate from $hashname with $accreditation Accreditation has been excluded from your local installation]\n";
+            $return_code = 1;
+        }
+    }else{
+        for my $current_hash ( keys %source_pem ) {
+            next if ($current_hash =~ /_name$/); #Ignore the hashes that end in _name, since these are just the identify names of the hashes
+            next if (-e "$dir/$current_hash.pem");
+
+            # A certificate has been removed
+            my $accreditation = "";
+            if ($source_pem{$current_hash} =~ /I/i) {
+                $accreditation.=" IGTF";
+            }
+            if ($source_pem{$current_hash} =~ /T/i) {
+                $accreditation.=" TeraGrid";
+            }
+            $accreditation = "Unknown" if($accreditation eq "");
+            my $hashname = $source_pem{$current_hash."_name"};
+            $hashname = "Unknown" if (! $hashname);
+            print "< $current_hash. [Certificate from $hashname with $accreditation Accreditation has been excluded from your local installation]\n";
+            $return_code = 1;
+        }
+    }
+    return $return_code;
+}
+
+#---------------------------------------------------------------------
+#
+# set_caurl : Change the CAcerts_url
+# Input  : $is_setup: 1 - if called from setup; 0 - otherwise
+# Output : 1 - Change made and config file was written successfully.
+#          0 - No change made  and config file was not written.
+#
+#---------------------------------------------------------------------
+sub set_caurl {
+    my ($is_setup) = @_;
+    read_url();
+    my $description = OSGCerts::fetch_ca_description($url);
+    my $valid = $description->{valid};
+    my $ret_code = $valid;
+    if ($valid) {
+        $config->{cacerts_url} = $url;
+        $ret_code = write_config_file($is_setup);
+    }
+    elsif ($force && !$is_setup) {
+        # We don't want to allow force during setup 
+        print "The CA certificate URL you provided does not point to a valid description file.\n";
+        print "Since --force was specified, this URL will be written into the config file anyways.\n";
+        print "Please note that osg-update-certs might not work correctly.\n";
+        $config->{cacerts_url} = $url;
+        $ret_code = write_config_file($is_setup);
+    }
+    else {
+        print "The CA certificate URL you provided was deemed not correct\n";
+        print "NO change were made \n";
+    }
+    return $ret_code;
+}
+
+
+#---------------------------------------------------------------------
+#
+# setup_ca : Calls osg-setup-ca-certificates
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub setup_ca {
+    my $ret_code = 0;
+    if(!defined $url && !$noupdate ){
+        print "\nEither one of [--url or --no-update] options need to be set when using setupCA command.\n";
+        exit 1;
+    }
+
+    # Determine the installation location.  Allow for 'root' keywords
+    if(!$install_location) {
+        print "Location was not declared.  Defaulting to /etc/grid-security\n";
+        $install_location = "/etc/grid-security";
+    }
+    elsif($install_location =~ /^\s*root\s*$/i) {
+        $install_location = "/etc/grid-security";
+    }
+
+    if(!$noupdate){
+	$config->{install_dir} = $install_location;
+        $ret_code = set_caurl(1);
+        if($ret_code != 1) {
+            print "CA Certificates has not been set up. Exiting.\n";
+            exit 1;
+        }
+    }
+    print "Setting up CA Certificates for OSG installation\n";
+    
+    if(!$noupdate){
+        print "CA Certificates will be installed into $install_location/certificates\n";
+        $ret_code = system("/usr/libexec/osg-setup-ca-certificates --certs-dir $install_location");
+    }
+    else{
+        $ret_code = setup_ca_wn_symlinks($install_location);
+    }
+
+    if($ret_code != 0) {
+        print "\nSetup did not complete successfully.\nPlease check the logs for more information.\n";
+        exit 1;
+    }
+    else {
+        print "\nSetup completed successfully.\n";
+    }
+    
+}
+#---------------------------------------------------------------------
+#
+# setup_ca_wn_symlinks: Just sets up symlink when --no-updates option is set
+# Input  : None
+# Output : ret_code:  0 - success; non_zero - failure;
+#
+#---------------------------------------------------------------------
+sub  setup_ca_wn_symlinks{
+    my ($install_location) = @_;
+
+    # Find out whether to point to symlink to $install_location or $install_location/certificates
+    CORE::system("ls $install_location/*.0  >/dev/null 2>&1");
+    if($? != 0){
+        # We will not use the specified installdir. Lets check certificates dir
+ 	    CORE::system("ls $install_location/certificates/*.0  >/dev/null 2>&1");
+  	    if($?==0){
+	        print "\nNOTE: '$install_location' did not contain CA files using '$install_location/certificates' dir instead.";
+	        $install_location = " $install_location/certificates";
+	    }else{
+	        print "\nWARNING: CA files were not found in either '$install_location' or '$install_location/certificates'.";
+            if(!$force) {
+                print "\nPlease make sure that you have the correct directory or if you want to supress this check run with --force option enabled";
+    	        return 1;
+	        }
+	    }
+    }
+
+    return 0;
+}
+#---------------------------------------------------------------------
+#
+# fetch_ca : Executes osg-update-certs
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub fetch_ca {
+    my $osg_update_certs = "/usr/sbin/osg-update-certs";
+    if (! -e $osg_update_certs ) {
+        print "osg-update-certs not found at ('$osg_update_certs').\n";
+        exit 1;
+    }
+    my $ret;
+    print "Fetching CAs....\n";
+    if (!$force) {
+        $ret = `$osg_update_certs 2>&1`;
+    }
+    else {
+        $ret = `$osg_update_certs --force 2>&1`;
+    }
+    print "$ret\n";
+}
+
+#---------------------------------------------------------------------
+#
+# fetch_crl : Executes fetch-crl
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub fetch_crl {
+    my $fetch_crl_exec = "/usr/sbin/fetch-crl";
+    print "Fetching CRLs....\n";
+    if (! -e $fetch_crl_exec ) {
+        print "Fetch CRL not found at ('$fetch_crl_exec').\n";
+        exit 1;
+    }
+    # Check that fetch-crl is running from cron
+    my $done=0;
+    if(!-e "/etc/cron.d/fetch-crl") {
+        # We are even not allowing force here. We could, but this is bound to lead to problems.
+        print "WARNING: Fetch CRL is not running via crontab (of uid: $>).\n";
+        print "         Fetching the CRLs using this tool without enabling cron could cause them to expire without being refreshed.\n";
+        print "         This will cause authentication failures.\n";
+        print "         We will not be fetching CRLs. If you want to use the fetchCRL functionality please install fetch-crl cron.\n";
+        print "...done\n";
+        exit 1;
+    }
+    
+
+    my $quiet = ($verbose) ? "" : "--quiet";
+    my $ret = `$fetch_crl_exec  --loc $cert_dir --out $cert_dir $quiet`;
+    print "$ret\n";
+    print "...done\n";
+
+    my $path = "/var/lib/osg/fetch-crl.lastrun";
+    open(FILE, '>', $path) or die("Can't open $path for writing: $!");
+    print FILE time; # Should we do this?; 
+    close FILE;
+}
+
+#---------------------------------------------------------------------
+#
+# add_ca : Adds a new local CA
+# Input  : hash to be added (dir is a global variable)
+# Output : 0 - No change made, 1 - Certificate added
+#
+#
+#---------------------------------------------------------------------
+sub add_ca{
+    my ($type) = @_;
+    my $param;
+    if($type=~/^file$/){
+        # Adding back CA files that have been removed 
+        $param =   fileparse($caname_ar, qr/\.[^.]*/);
+
+        # First check in excludes. If present remove it and return success
+        my @new_exclude_cas = ();
+        my $remove=0;
+        # Check the excludes_ca list
+        my $current_hash =   fileparse($param, qr/\.[^.]*/);
+        my $current_exclude_cas = $config->{exclude_cas};
+
+        foreach my $ex (@$current_exclude_cas) {
+            if ( $current_hash =~ $ex ) {
+                #Remove certificate from excludes list
+                $remove=1;
+            }
+            else {
+                push (@new_exclude_cas, $ex);
+            }
+        }
+        if ($remove) {
+            #change made to excludes list. Copy over and we are done.
+            $config->{exclude_cas} = \@new_exclude_cas;
+            return 1;
+        }else{
+            print "No changes were made to the configuration.\n";
+            print "\tThe CA file for ('$current_hash') is not present in the exclude_ca list. Please check the CA name you wish to stop excluding.\n";
+            print "\tThe CAs currently being excluded on this installation include: @$current_exclude_cas\n";
+            print "\tThe certificate files you are using are in the new igtf format. So please use the CA names (as in .pem) and not the hash (as in .0).\n" if($igtf_format==1);
+            return 0;
+        }
+
+    }elsif($type=~/^dir$/){
+        # Adding new directories
+        chomp($cadir_ar);
+        chop($cadir_ar) if($cadir_ar=~/\/$/);
+        $param = $cadir_ar;
+
+        # Perform checks for existance of certfile and directory
+        if (!defined $param || !-d $param ) {
+            print "Directory to be added is located does not exist.\n";
+            print "\tPlease check the --cadir parameter\n";
+            return 0;
+        }
+        if ( $param =~ $cert_dir ) {
+            print "Directory to be added ('$param') should be different from certificate directory ('$cert_dir') being managed by OSG.\n";
+            return 0;
+        }
+        # We are not cheking if the directory has all CA file. Do we need to check it?
+        # check in includes
+        my $current_includes = $config->{includes};
+        my @new_includes = ();
+        my $ind; my $inf;
+        foreach my $in (@$current_includes) {
+            chomp($in); 
+             ($inf,$ind) = fileparse($in);
+#            my $current_hash =   fileparse($in, qr/\.[^.]*/);
+            if ( $ind =~ $param ) {
+                # Dir already included
+                print "No changes were made to the configuration.\n";
+                print "\tThe certificate directory you have specified is already present on the includes list.\n";
+                print "\tThe CA files/directories included are: @$current_includes\n";
+                return 0;            
+            }
+            else {
+                push (@new_includes, $in);
+            }
+        }
+        # Dir can now be included. 
+        push (@new_includes, "$param/*");
+        $config->{includes} = \@new_includes;
+        return 1;
+    }
+    return 0;
+
+}
+
+#---------------------------------------------------------------------
+#   
+# determine_ca_name : Determine appropriate CA name for both new and old format
+# Input  : CA name
+# Output : Appropriate .0 or .pem, "Error"
+#   
+#---------------------------------------------------------------------
+sub determine_ca_name{
+    my ($param) = @_;
+    my $orig_param=$param;
+    if($igtf_format==0){
+        if($param !~ m/\.0$/){
+            $param = "$param.0";
+        }
+        if(! -e "$cert_dir/$param"){
+            if($orig_param !~ m/\.pem$/){
+                $param = "$orig_param.pem";
+            }
+            if (-e "$cert_dir/$param"){
+                return $param;
+            }else{
+
+                print "No change has been made to configuration.\n";
+                print "Cound not find $cert_dir/$orig_param.{0,pem}.\n\tPlease make sure you enter the correct CA name\n";
+                $param = "Error";
+                return $param;
+            }
+        }else{
+            $param = readlink("$cert_dir/$param");
+            print "Symlink detected for hash: We have determided that the hash value you entered belong to the CA '$param'. If you wish to add this CA back you will have to use this name is the parameter.\n";
+        }
+        
+    }elsif($igtf_format==1){
+        if($param =~ m/\.0$/ || -e "$cert_dir/$param.0"){
+            print "New IGTF format detected\n";
+            print "\tThe certificate files you are using are in the new igtf format. This format has CA files ending in .pem format.\n";
+            print "\tThough symlinks are maintained to original .0 files it is prefered that new CA names when executing add/remove command\n";
+            if($param !~ m/\.0$/){
+                $param = "$param.0";
+            }
+            $param = readlink("$cert_dir/$param");
+            print "\tWe have determided that the hash value you entered belong to the CA '$param'. If you wish to add this CA back you will have to use this name is the parameter.\n";
+            return $param;
+        }
+        if($param !~ m/\.pem$/){
+            $param = "$param.pem";
+        }
+        if(! -e "$cert_dir/$param"){
+            print "No change has been made to configuration.\n";
+            print "Cound not find $cert_dir/$param.\n\tPlease make sure you enter the correct CA name\n";
+            $param = "Error";
+            return $param;
+        }
+    }
+    return $param;
+}
+#---------------------------------------------------------------------
+#
+# remove_ca : Removes a CA from the trusted list
+# Input  : hash of CA to be removed
+# Output : 0 - No change made, 1 - Certificate removed
+#
+#---------------------------------------------------------------------
+sub remove_ca{
+    my ($type) = @_;
+    my $remove=0;
+    my $param;
+    if($type=~/^file$/){
+        $param = determine_ca_name($caname_ar);
+        return 0 if($param eq "Error");
+
+        my $current_hash =   fileparse($param, qr/\.[^.]*/);
+
+        # Check the excludes_ca list
+        my $current_exclude_cas = $config->{exclude_cas};
+        foreach my $ex (@$current_exclude_cas) {
+            if ( $ex =~ $current_hash ) {
+                # CA is already included in the exclude_calist. So no changes made
+                print "No changes were made to the configuration.\n";
+                print "\tThe CA file for ('$current_hash') is already present in the exclude_ca list.\n";
+                return 0;
+            }
+        }
+
+        $remove=0;
+        $current_exclude_cas = $config->{exclude_cas};
+        my $child_certs = has_child_certificates($param);
+        if ($child_certs) {
+            print "The CA file ('$param') you wish to remove has childeren certificate.\n" ;
+            if($force) {
+                push (@$current_exclude_cas, $current_hash);
+                print "\tCertificate removed regardless of the dependencies due to --force option.\n";
+                $remove = 1;
+            }
+            else {
+                print "\tYou may use the --force option to remove the certificate anyway regardless the dependencies.\n";
+                print "No changes were made to the configuration.\n";
+            }
+        }else {
+            push (@$current_exclude_cas, $current_hash);
+            $remove = 1;
+        }
+        if ($remove) {
+            $config->{exclude_cas} = \@$current_exclude_cas;
+            return 1;
+        }
+        return $remove;
+    }elsif($type=~/^dir$/){
+        # Adding new directories
+        chomp($cadir_ar);
+        chop($cadir_ar) if($cadir_ar=~/\/$/);
+        $param = $cadir_ar;
+
+        # We are not cheking if the directory has all CA file. Do we need to check it?
+        # check in includes
+        my $current_includes = $config->{includes};
+        my @new_includes = (); 
+        my $ind; my $inf;
+        foreach my $in (@$current_includes) {
+            chomp($in); 
+             ($inf,$ind) = fileparse($in);
+#            my $current_hash =   fileparse($in, qr/\.[^.]*/);
+            if ( $ind =~ $param ) {
+                # Dir to be removed found
+                $remove= 1
+            }
+            else {
+                push (@new_includes, $in);
+            }
+        }
+        if ($remove) {
+            $config->{includes} = \@new_includes;
+            return 1;
+        }else{
+            print "No changes were made to the configuration.\n";
+            print "\tThe certificate directory you have specified is not present on the includes list.\n";
+            print "\tThe CA files/directories included are: @$current_includes\n";
+            return 0;            
+        }
+
+    }
+
+    return $remove;
+} 
+
+#---------------------------------------------------------------------
+#
+# has_child_certificates : Checks if a CA has issued other certificate.
+# This fuction is used before deciding if a certificate can be removed.
+# Input  : hash of CA
+# Output : 0 - No childern/force option is used, 
+#          1 - Child certificates found.
+#
+#---------------------------------------------------------------------
+sub has_child_certificates {
+    my ($local_hash) = @_;
+    if ($force) {
+         # No checks on force 
+        print "You are forcing a certificate file ('$local_hash') to be removed. Be WARNED, it would cause any certificates issued by that CA or its children to be rejected.\n";
+        return 0;
+    }
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+    if(!-e "$dir/$local_hash" ) {
+        print "The certificate for $local_hash you specified were not found\n";
+        print "We are unable to determine if there might be any child certificates that depend on this CA.\n";
+        print "You may use the --force option to remove the certificate, if you are confident about the dependencies.\n";
+        print "No changes were made to the configuration.\n";
+        exit 1; #return 1;
+    }
+    # get subject of current hash
+    chomp(my $cert_values = `$openssl x509 -in $dir/$local_hash -subject -noout 2>/dev/null`);
+    my $subject =  (split /subject=/, $cert_values)[1];
+    # Replace () by _. Interferes with pattern matching. (needed for a particular certificate)
+    $subject =~ s/\)/_/g;
+    $subject =~ s/\(/_/g;
+
+    #check if the suject of current hash is the issuer of a different certificate
+    #my $ext="*.0";
+    #$ext="*.pem" if($igtf_format==1);
+    #foreach my $local_certs_file (`ls -1 $dir/$ext 2> /dev/null`) {
+    foreach my $local_certs_file (`find $dir/*.0 $dir/*.pem -type f 2> /dev/null`) {
+        chomp($local_certs_file);
+        # my $current_hash =   fileparse($local_certs_file, qr/\.[^.]*/);
+        # Dont check the certificate itself. This allows self signed certificate to be removed
+        # without --force as long as it does not have any other childeren
+        my ($inf,$ind) = fileparse($local_certs_file);
+        next if($inf eq $local_hash);
+        chomp($cert_values = `$openssl x509 -in $local_certs_file -issuer -noout 2>/dev/null`);
+        my $issuer =  (split /issuer=/, $cert_values)[1];
+        $issuer =~ s/\)/_/g;
+        $issuer =~ s/\(/_/g;
+        if ($issuer =~ /^$subject$/i ) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+########################## Helper Functions ##########################
+#---------------------------------------------------------------------
+#
+# check_openssl: Find the appropriate openssl binaries.
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub check_openssl {
+    if ( -e "/usr/bin/openssl") {
+        $openssl = "/usr/bin/openssl";
+    }
+    elsif(OSGCerts::which("openssl")) {
+        $openssl = `which openssl 2>/dev/null`;
+        chomp($openssl);
+    }
+    else {
+        print "Could not find openssl command. Please make sure openssl is installed and in your path.";
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# is_writable: Check the ownership of the conf file and certificate
+# directory to see if it is writable by the user.
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub is_writable {
+    return if not defined $cert_dir;
+
+    my $cert_dir_uid = (stat($cert_dir))[4];
+    if (($< != 0) && ($cert_dir_uid != $<)) {
+        print "You are neither running as root or have ownership of $cert_dir directory.\n";
+        print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
+        exit 1;
+    }
+
+    my $update_certs_conf_uid = (stat($update_certs_conf))[4];
+    if (($< != 0) && ($update_certs_conf_uid != $<)) {
+        print "You are neither running as root or have ownership of the configuration file $update_certs_conf.\n";
+        print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# gmt_to_unix_time: Convert time from GMT to unix
+# Input  : (short month name, date, year, hour, min, sec)
+# Output : Unix time
+#
+#---------------------------------------------------------------------
+sub gmt_to_unix_time {
+    my ($month_s, $date, $year, $hour, $min, $sec) = @_;
+    my %months = (
+        'Jan' => '0',
+        'Feb' => '1',
+        'Mar' => '2',
+        'Apr' => '3',
+        'May' => '4',
+        'Jun' => '5',
+        'Jul' => '6',
+        'Aug' => '7',
+        'Sep' => '8',
+        'Oct' => '9',
+        'Nov' => '10',
+        'Dec' => '11'
+    );
+    my $month = $months{$month_s};
+    $year -= 1900;
+    return timegm($sec, $min, $hour, $date, $month, $year);
+}
+
+
+#---------------------------------------------------------------------
+#
+# check_rpm: Check if Certificate update is being managed by RPM
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+sub check_rpm {
+    if(OSGCerts::which("rpm")) {
+        # Don't use system() or failsafe_system() because we don't want to log the output
+        # in case the user doesn't have priveleges to write the output file
+        my $rpm_ret = CORE::system("rpm -q --whatprovides osg-ca-certs >/dev/null 2>&1");
+        if(!$rpm_ret) {
+            print "ERROR: You seem to have installed CA certificates using the osg-ca-certs RPM.\n";
+            exit 1;
+        }
+    }
+    elsif(-e "/sbin/dpkg") {
+        # To be implemented for Debian
+    }
+}
+#---------------------------------------------------------------------
+#
+# check_package_format: Check what format of igtf distribution is installed
+# Input  : None
+# Output : 0 - Old Format; 1 - New format
+#
+#---------------------------------------------------------------------
+sub check_package_format{
+    my $format = 1;
+    $dir = $cert_dir if (! defined $dir || ! -d $dir);
+    my $ret = CORE::system("find $dir/*.0 -type f &>/dev/null");
+    if($ret==0) {
+        $format = 0 ;
+    }
+
+    $ret = CORE::system("ls -1 $dir/*.pem &>/dev/null");
+    if($ret!=0) {
+        $format = 0 ;
+    }
+    return $format;
+}

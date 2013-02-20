@@ -1,0 +1,28 @@
+/var/log/osg-update-certs.* {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+
+/var/log/osg-ca-certs-status.system.out {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+
+/var/log/osg-ca-manage.system.out {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+
+/var/log/osg-setup-ca-certificates.system.out {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+

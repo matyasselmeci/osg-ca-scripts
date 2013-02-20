@@ -1,0 +1,129 @@
+#!/usr/bin/env perl
+
+# This script sets up the certificates area so that osg-update-certs can be run a first time.  
+# Then it calls osg-update-certs which will install the certificates.
+
+use strict;
+use warnings;
+use Getopt::Long;
+use OSGCerts;
+use File::Spec;
+use File::Basename;
+
+my $certs_dir;
+my $post_install_msg = "";
+
+# Parse the command line
+get_options();
+
+# Move any existing certificates out of the way
+my $old_certs_dir = backup_existing_certs();
+
+# Install the certificates
+install_certs();
+
+# Copy over CRLs from old directory
+copy_crls($old_certs_dir) if($old_certs_dir);
+
+exit 0;
+
+
+#
+# Helper functions
+#
+
+sub get_options {
+    # The command line will override the environment variables
+    GetOptions("certs-dir=s"   => \$certs_dir,
+               "help|usage"    => \&usage);
+    
+    OSGCerts::initialize("osg-setup-ca-certificates");
+
+    # Error check certs-dir
+    if(!$certs_dir) {
+        print "ERROR: Install type is not specified.  You must pass --certs-dir\n";
+        exit 1;
+    }
+    elsif($certs_dir !~ m|^/|) {
+        print "ERROR: certs-dir must be absolute\n";
+        exit 1;
+    }
+    elsif(!-d $certs_dir) {
+        system("mkdir -p $certs_dir");
+    }
+    elsif(!-w $certs_dir) {
+        print "ERROR: Cannot write to $certs_dir";
+        exit 1;
+    }
+}
+
+
+sub usage {
+    print "\n\nUsage: setup-certs-area --certs-dir <path>\n";
+    print "                        --help / --usage\n\n";
+    print "Specify the directory to install the certificates into with --certs-dir\n\n";
+    print "This script is used to setup the certificates area once, future updates are done by\n";
+    print "the osg-update-certs cron script.  This script should only be called once.\n";
+    print "Make sure osg-update-certs cron script is enabled for future certificate updates.\n\n";
+    exit 1;
+}
+
+
+# If certificates is a directory, not a symlink, move it out of the way
+# If it is a symlink, move whatever it is pointing at out of the way, and remove the symlink
+sub backup_existing_certs {
+    my $install_to = "$certs_dir/certificates";
+    
+    my $old_certs_dir;
+    if(-d $install_to && !-l $install_to) {
+        # Get a non-existent name to back up the directory to
+        my $backup_loc = "$install_to.bkup";
+        my $cnt = 1;
+        while(-e $backup_loc) {
+            $backup_loc = "$install_to.bkup.$cnt";
+            $cnt++;
+        }
+        
+        OSGCerts::log_msg("INFO: $install_to already existed as a directory, so it was backed up to $backup_loc\n");
+        system("mv $install_to $backup_loc");
+        $old_certs_dir = $backup_loc;
+    }
+    return $old_certs_dir;
+}
+
+
+# Run osg-update-certs
+sub install_certs {
+
+    # Do I need to remove $install_dir first here?
+    OSGCerts::log_msg("Installing certs in directory $certs_dir\n");
+    
+    # If this fails, we should provide the output to the user
+    my $ret = system("/usr/sbin/osg-update-certs --ignore-certs-state --force");
+    exit(1) if($ret != 0);
+}
+
+
+sub copy_crls {
+    my ($old_certs_dir) = @_;
+
+    if($old_certs_dir) {
+        OSGCerts::log_msg("INFO: Preserving CRLs from $old_certs_dir");
+        $post_install_msg .= "We have backed up your old certificates directory to $old_certs_dir " . 
+            "and preserved the CRLs from that directory.\n\n";
+
+        foreach my $crl (glob("$old_certs_dir/*.r?")) {
+            my $file = basename($crl);
+            (my $hash = $file) =~ s/\.r.//;
+            
+            # In the new set of CAs, do we still have the CA for this CRL?
+            if (-e "$certs_dir/certificates/$hash.0") {
+                OSGCerts::log_msg("Preserving CRL $file");
+                system("cp -p $crl $certs_dir/certificates");
+            }
+            else {
+                OSGCerts::log_msg("Not preseving CRL $file because there is no CA for it in the update");
+            }
+        }
+    }
+}
