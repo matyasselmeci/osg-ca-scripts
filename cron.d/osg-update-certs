@@ -1,7 +1,7 @@
 # Cron job running by default every 1 hour.
 # The lock file can be enabled or disabled via a
-# service fetch-crl-cron start
-# chkconfig fetch-crl-cron on
+# service osg-update-certs-cron start
+# chkconfig osg-update-certs-cron on
 
 # Note the lock file not existing is success hence the the slightly odd logic
 # below.
