@@ -1,5 +1,7 @@
 VERSION = 0.0.9
 
+.PHONY: _default clean dist
+
 _default:
 	@echo "Nothing to make. Try make dist"
 
