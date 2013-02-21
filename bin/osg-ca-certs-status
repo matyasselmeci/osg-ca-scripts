@@ -134,7 +134,6 @@ sub print_full_info {
         }
     }
 
-
     # Some Fetch-CRL info
     print "\nFetch-CRL info:\n";
 
@@ -155,14 +154,32 @@ sub print_full_info {
     else {
         print "    Last run: unknown ($fetch_crl_info_file does not exist or cannot be read).\n";
     }
-    
-    # Check that fetch-crl is running
-    my $path = "/etc/cron.d/fetch-crl";
-    if(!-e $path) {
-        print "    WARNING: fetch-crl.cron does not exist at $path\n";
+
+    # Find first installed RPM and extract its name and major version.
+    my @package_names = ('fetch-crl3', 'fetch-crl');
+    chomp(my @installed_packages = grep /^fetch-crl/, map { `rpm -q $_` } @package_names);
+    if (@installed_packages) {
+        print "    Installed Fetch CRL packages: " . join(', ', @installed_packages) . ".\n";
     }
     else {
-	print "    Status: Installed and running\n";
+        print "    WARNING: Could not find any installed Fetch CRL packages (" . join(" or ", @package_names) . ").\n";
+        return;
+    }
+
+    # Check that fetch-crl is running
+    my @installed_cron_files;
+    foreach my $fetch_crl_package (@installed_packages) {
+        chomp(my $fetch_crl_cron = (grep(m{^/etc/cron.d/fetch-crl}, `rpm -ql $fetch_crl_package`))[0]);
+        if (-e $fetch_crl_cron) {
+            push @installed_cron_files, $fetch_crl_cron;
+        }
+    }
+    if (@installed_cron_files) {
+	print "    Status: Installed and running.\n";
+        print "            Active cron files: " . join(', ', @installed_cron_files) . ".\n";
+    }
+    else {
+        print "    WARNING: Could not find any Fetch CRL cron files.\n";
     }
 
     print "\n";
