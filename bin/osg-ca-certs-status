@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use File::Basename;
 use Getopt::Long;
 use OSGCerts;
 
@@ -155,7 +156,7 @@ sub print_full_info {
         print "    Last run: unknown ($fetch_crl_info_file does not exist or cannot be read).\n";
     }
 
-    # Find first installed RPM and extract its name and major version.
+    # Find all installed RPMs and print information.
     my @package_names = ('fetch-crl3', 'fetch-crl');
     chomp(my @installed_packages = grep /^fetch-crl/, map { `rpm -q $_` } @package_names);
     if (@installed_packages) {
@@ -166,20 +167,24 @@ sub print_full_info {
         return;
     }
 
-    # Check that fetch-crl is running
-    my @installed_cron_files;
-    foreach my $fetch_crl_package (@installed_packages) {
-        chomp(my $fetch_crl_cron = (grep(m{^/etc/cron.d/fetch-crl}, `rpm -ql $fetch_crl_package`))[0]);
-        if (-e $fetch_crl_cron) {
-            push @installed_cron_files, $fetch_crl_cron;
+    # Check that fetch-crl is enabled.
+    my @installed_cron_services;
+    foreach my $package_nvr (@installed_packages) {
+        if ($package_nvr =~ /^(fetch-crl[^-]*)-/) {
+            my $name = $1;
+            chomp(my @fetch_crl_files = `rpm -ql $name`);
+            my $init_script = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
+            my $cron_service = basename($init_script);
+            my $exit_status = system("/sbin/service $cron_service status >/dev/null 2>&1");
+            push @installed_cron_services, $cron_service if $exit_status == 0;
         }
     }
-    if (@installed_cron_files) {
+    if (@installed_cron_services) {
 	print "    Status: Installed and running.\n";
-        print "            Active cron files: " . join(', ', @installed_cron_files) . ".\n";
+        print "            Active cron service(s): " . join(', ', @installed_cron_services) . ".\n";
     }
     else {
-        print "    WARNING: Could not find any Fetch CRL cron files.\n";
+        print "    WARNING: Fetch CRL cron services are NOT enabled!\n";
     }
 
     print "\n";
