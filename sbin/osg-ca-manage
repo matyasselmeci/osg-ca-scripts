@@ -1324,27 +1324,52 @@ sub fetch_ca {
 #
 #---------------------------------------------------------------------
 sub fetch_crl {
-    my $fetch_crl_exec = "/usr/sbin/fetch-crl";
-    print "Fetching CRLs....\n";
-    if (! -e $fetch_crl_exec ) {
-        print "Fetch CRL not found at ('$fetch_crl_exec').\n";
+    my @package_names = ('fetch-crl3', 'fetch-crl');
+
+    # Find first installed RPM and extract its name and major version.
+    my ($fetch_crl_package, $fetch_crl_version);
+    foreach my $package (map { `rpm -q $_` } @package_names) {
+        if ($package =~ /^(fetch-crl[^-]*)-(\d)[^-]*-[^-]*$/) {
+            ($fetch_crl_package, $fetch_crl_version) = ($1, $2);
+            last;
+        }
+    }
+    if (not defined $fetch_crl_package) {
+        print "Could not find an installed Fetch CRL package (" . join(" or ", @package_names) . ").\n";
         exit 1;
     }
+
+    # Determine paths to key files
+    chomp(my @fetch_crl_files = `rpm -ql $fetch_crl_package`);
+    my $fetch_crl_exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
+    my $fetch_crl_cron = (grep(m{^/etc/cron.d/fetch-crl}, @fetch_crl_files))[0];
+
+    print "Fetching CRLs....\n";
+    if (not -e $fetch_crl_exec) {
+        print "Fetch CRL not found at '$fetch_crl_exec'.\n";
+        exit 1;
+    }
+
     # Check that fetch-crl is running from cron
-    my $done=0;
-    if(!-e "/etc/cron.d/fetch-crl") {
+    my $done = 0;
+    if (not -e $fetch_crl_cron) {
         # We are even not allowing force here. We could, but this is bound to lead to problems.
-        print "WARNING: Fetch CRL is not running via crontab (of uid: $>).\n";
-        print "         Fetching the CRLs using this tool without enabling cron could cause them to expire without being refreshed.\n";
-        print "         This will cause authentication failures.\n";
-        print "         We will not be fetching CRLs. If you want to use the fetchCRL functionality please install fetch-crl cron.\n";
+        print "WARNING: Fetch CRL is not running via cron (of UID: $>).\n";
+        print "         Fetching CRLs with this tool without enabling cron could cause the\n";
+        print "         CRLs to expire without being refreshed.  Expired CRLs cause\n";
+        print "         authentication failures in other tools.  Therefore, CRLs will not\n";
+        print "         be fetched now.  To enable the fetchCRL functionality of this\n";
+        print "         tool, please install and enable Fetch CRL cron.\n";
         print "...done\n";
         exit 1;
     }
-    
 
-    my $quiet = ($verbose) ? "" : "--quiet";
-    my $ret = `$fetch_crl_exec  --loc $cert_dir --out $cert_dir $quiet`;
+    # Long option names are nice, but for fetch-crl short ones are better.  Why?
+    # Because the -l and -o options are identical in fetch-crl v2 and v3, but
+    # their long names differ: --loc and --infodir, --out and --output.
+    my $fetch_crl_command = "$fetch_crl_exec -l $cert_dir -o $cert_dir";
+    $fetch_crl_command .= ' -q' unless $verbose;
+    my $ret = `$fetch_crl_command`;
     print "$ret\n";
     print "...done\n";
 
