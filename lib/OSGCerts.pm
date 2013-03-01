@@ -28,26 +28,65 @@ use FileHandle;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(log_msg);
 
+my $contact_goc = "\nIf you have any further issues please contact us at goc\@opensciencegrid.org.\n";
+
 # Global variables that get set during the initialize() sub
 my $initialized = 0;
 my $PACKAGE;
 my $certs_version_file;
+my $certs_dir;
+my $package_log_file;
 my $updater_status_file;
+my $updater_log_file;
 my $updater_conf_file;
-
+my $is_nonroot;
+    
 # File handle for whichever log we are using
 my $log_fh = undef;
 
 
 sub initialize {
     ($PACKAGE) = @_;
-    
-    # Replace this with something?
-    set_logfile("/var/log/$PACKAGE.system.out");
 
+    my $osg_root = $ENV{'OSG_LOCATION'};
+    my $rpm_missing = system("rpm -qf $0 > /dev/null 2>&1");
+    $is_nonroot = 1;
+
+    # File paths for rpm installs     
+    $package_log_file    = "/var/log/$PACKAGE.system.out";
     $certs_version_file  = "/var/lib/osg-ca-certs/ca-certs-version";
+    $certs_dir           = dirname($certs_version_file);
     $updater_status_file = "/var/lib/osg-ca-certs/certs-updater-status";
     $updater_conf_file   = "/etc/osg/osg-update-certs.conf";
+    $updater_log_file    = "/var/log/osg-update-certs.log";
+
+    # Change file paths for non-root installs
+    if (defined($osg_root) && $rpm_missing) {
+        $package_log_file    = $osg_root . $package_log_file;
+        $certs_version_file  = $osg_root . $certs_version_file;
+        $certs_dir           = $osg_root . $certs_dir;
+        $updater_status_file = $osg_root . $updater_status_file;
+        $updater_conf_file   = $osg_root . $updater_conf_file;
+        $updater_log_file    = $osg_root . $updater_log_file;
+
+        if (not -d $certs_dir) {
+            print "Could not find certificates directory: " . $certs_dir . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
+            exit 1;
+        }
+        elsif (not -w $certs_dir) {
+            print "May not be able to write to the certificates directory: " . $certs_dir . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
+            exit 1;
+        }
+
+        $is_nonroot = 0;
+    }
+    elsif (not defined($osg_root) && $rpm_missing) {
+        print "Could not find OSG install location. Have you sourced setup.sh?\n" . $contact_goc;
+        exit 1;
+    }
+    
+    # Replace this with something?
+    set_logfile($package_log_file);
     $initialized = 1;
 }
 
@@ -293,7 +332,7 @@ sub read_updater_config_file {
     my $config;
 
     # Defaults for anything we might not read.
-    $config->{log} = "/var/log/osg-update-certs.log";
+    $config->{log} = $updater_log_file;
     $config->{cacerts_url} = "";
     $config->{debug} = 0;
     my @includes = ();
