@@ -40,6 +40,7 @@ my $updater_status_file;
 my $updater_log_file;
 my $updater_conf_file;
 my $is_nonroot;
+my $osg_root = $ENV{'OSG_LOCATION'};
     
 # File handle for whichever log we are using
 my $log_fh = undef;
@@ -48,9 +49,8 @@ my $log_fh = undef;
 sub initialize {
     ($PACKAGE) = @_;
 
-    my $osg_root = $ENV{'OSG_LOCATION'};
     my $rpm_missing = system("rpm -qf $0 > /dev/null 2>&1");
-    $is_nonroot = 1;
+    $is_nonroot = 0;
 
     # File paths for rpm installs     
     $package_log_file    = "/var/log/$PACKAGE.system.out";
@@ -62,13 +62,15 @@ sub initialize {
 
     # Change file paths for non-root installs
     if (defined($osg_root) && $rpm_missing) {
-        $package_log_file    = $osg_root . $package_log_file;
-        $certs_version_file  = $osg_root . $certs_version_file;
-        $certs_dir           = $osg_root . $certs_dir;
-        $updater_status_file = $osg_root . $updater_status_file;
-        $updater_conf_file   = $osg_root . $updater_conf_file;
-        $updater_log_file    = $osg_root . $updater_log_file;
+        $is_nonroot = 1;
 
+        $package_log_file    = prepend_osg_location($package_log_file);
+        $certs_version_file  = prepend_osg_location($certs_version_file);
+        $certs_dir           = prepend_osg_location($certs_dir);
+        $updater_status_file = prepend_osg_location($updater_status_file);
+        $updater_conf_file   = prepend_osg_location($updater_conf_file);
+        $updater_log_file    = prepend_osg_location($updater_log_file);
+        
         if (not -d $certs_dir) {
             print "Could not find certificates directory: " . $certs_dir . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
             exit 1;
@@ -77,8 +79,6 @@ sub initialize {
             print "May not be able to write to the certificates directory: " . $certs_dir . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
             exit 1;
         }
-
-        $is_nonroot = 0;
     }
     elsif (not defined($osg_root) && $rpm_missing) {
         print "Could not find OSG install location. Have you sourced setup.sh?\n" . $contact_goc;
@@ -142,6 +142,14 @@ sub get_certs_updater_status_file_loc {
 
 sub get_updater_conf_file_loc {
     return $updater_conf_file;
+}
+
+sub get_osg_root_loc {
+    return $osg_root;
+}
+
+sub get_install_method {
+    return $is_nonroot;
 }
 
 # Logging subroutines
@@ -413,5 +421,9 @@ sub slurp {
     return wantarray ? @contents : $contents_as_string;
 }
 
-
+sub prepend_osg_location {
+    my ($location) = @_;
+    
+    return $osg_root . "/" . $location;
+}
 1;
