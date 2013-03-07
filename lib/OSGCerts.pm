@@ -28,13 +28,11 @@ use FileHandle;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(log_msg);
 
-my $contact_goc = "\nIf you have any further issues please contact us at goc\@opensciencegrid.org.\n";
-
 # Global variables that get set during the initialize() sub
 my $initialized = 0;
 my $PACKAGE;
 my $certs_version_file;
-my $certs_dir;
+my $certs_version_dir;
 my $package_log_file;
 my $updater_status_file;
 my $updater_log_file;
@@ -55,33 +53,46 @@ sub initialize {
     # File paths for rpm installs     
     $package_log_file    = "/var/log/$PACKAGE.system.out";
     $certs_version_file  = "/var/lib/osg-ca-certs/ca-certs-version";
-    $certs_dir           = dirname($certs_version_file);
+    $certs_version_dir   = dirname($certs_version_file);
     $updater_status_file = "/var/lib/osg-ca-certs/certs-updater-status";
     $updater_conf_file   = "/etc/osg/osg-update-certs.conf";
     $updater_log_file    = "/var/log/osg-update-certs.log";
 
     # Change file paths for non-root installs
     if (defined($osg_root) && $rpm_missing) {
+        # Remove trailing slash to path if there is one
+        $osg_root =~ s/\/?$//; 
         $is_nonroot = 1;
 
-        $package_log_file    = prepend_osg_location($package_log_file);
-        $certs_version_file  = prepend_osg_location($certs_version_file);
-        $certs_dir           = prepend_osg_location($certs_dir);
-        $updater_status_file = prepend_osg_location($updater_status_file);
-        $updater_conf_file   = prepend_osg_location($updater_conf_file);
-        $updater_log_file    = prepend_osg_location($updater_log_file);
-        
-        if (not -d $certs_dir) {
-            print "Could not find certificates directory: " . $certs_dir . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
+        $package_log_file    = $osg_root . $package_log_file;
+        $certs_version_file  = $osg_root . $certs_version_file;
+        $certs_version_dir   = $osg_root . $certs_version_dir;
+        $updater_status_file = $osg_root . $updater_status_file;
+        $updater_conf_file   = $osg_root . $updater_conf_file;
+        $updater_log_file    = $osg_root . $updater_log_file;
+
+        # Check existence/writeability of the main conf file that should have been a part of the tarball install. If
+        # there are problems, warn the user and exit early.
+        if (not -e $updater_conf_file) {
+            print "Could not find config file: " . $updater_conf_file . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . contact_goc_err_msg();
             exit 1;
         }
-        elsif (not -w $certs_dir) {
-            print "May not be able to write to the certificates directory: " . $certs_dir . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
+        elsif (not -w $updater_conf_file) {
+            print "May not be able to write to the config file: " . $updater_conf_file . ". You may need to speak to the owner or login as the owner of the file.\n" . contact_goc_err_msg();
             exit 1;
+        }
+
+        # If the directory structure isn't in place, make it.
+        my @root_dirs = [$osg_root . "/etc/grid-security",
+                         $osg_root . "/var/log",
+                         $osg_root . "/var/run"];
+        
+        foreach my $dir (@root_dirs) {
+            system(mkdir -p $dir) if (not $dir);
         }
     }
     elsif (not defined($osg_root) && $rpm_missing) {
-        print "Could not find OSG install location. Have you sourced setup.sh?\n" . $contact_goc;
+        print "Could not find OSG install location. Have you sourced setup.sh?\n" . contact_goc_err_msg();
         exit 1;
     }
     
@@ -421,9 +432,8 @@ sub slurp {
     return wantarray ? @contents : $contents_as_string;
 }
 
-sub prepend_osg_location {
-    my ($location) = @_;
-    
-    return $osg_root . "/" . $location;
+sub contact_goc_err_msg {
+    return "\nIf you have any further issues please contact us at goc\@opensciencegrid.org.\n";
 }
+
 1;
