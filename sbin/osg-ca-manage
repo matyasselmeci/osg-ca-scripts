@@ -222,7 +222,7 @@ my $noupdate = 0;
 my $cert_dir;
 my $dir;
 my $url;
-my $install_location;
+my $install_location=""; # Initialize so it doesn't error on regex match
 my $auto_refresh = 0;
 my $certs_file;
 my $update_certs_conf;
@@ -233,6 +233,9 @@ my %source_pem;
 my $igtf_format=0;
 my $cadir_ar; #ca directory to be added or removed
 my $caname_ar; #ca file to be added or removed
+my $is_nonroot; # tarball installs
+my $osg_root;
+my $contact_goc;
 
 main();
 
@@ -268,7 +271,10 @@ sub main {
                "help|usage"    => \&usage);
 
     OSGCerts::initialize("osg-ca-manage");
-
+    $is_nonroot = OSGCerts::get_install_method();
+    $osg_root = OSGCerts::get_osg_root_loc();
+    $contact_goc = OSGCerts::contact_goc_err_msg();
+        
     # Read in the command 
     if ($#ARGV != 0) {
         print "Please specify exactly one command to osg-ca-manage.\n";
@@ -287,11 +293,11 @@ sub main {
 	    $cert_dir = "/etc/grid-security/certificates";
 	}
         else {
-            print "No CA Certificate directory was found. Please specify the certificate directory using --cert-dir option.\n";
+            print "No CA Certificate directory was found. Have you run `osg-ca-manage setupCA`?\nIf you have, please specify the certificate directory using --cert-dir option.\n" . $contact_goc;
             exit 1;
         }
 
-        if ($supplied_cert_dir) {
+        if (defined($supplied_cert_dir)) {
             print "The supplied certificate directory, '$supplied_cert_dir' does not exist or is not a directory...\n";
             print "...using $cert_dir as CA certificate directory instead.\n";
         }
@@ -514,7 +520,7 @@ sub setupca_usage {
 
     print "osg-ca-manage setupca --location [root|<PATH>] --url [osg-compat|osg|igtf-compat|igtf|<URL>] --no-update --force
   Location:
-    root  - install into /etc/grid-security
+    root  - install into /etc/grid-security (\$OSG_LOCATION/etc/grid-security for tarball installs)
     PATH  - install into PATH (e.g. /nfs/certificates)
 
   URL:
@@ -622,8 +628,15 @@ cacerts_url = " . $config->{cacerts_url} . "\n";
     $content .= "
 ## log specifies where logging output will go
 ";
+
+    # Log files respect $OSG_LOCATION if necessary
     if (!$config->{log}) {
-        $content .= "log = /var/log/osg-update-certs.log\n";
+        if ($is_nonroot) {        
+            $content .= "log = " . $osg_root ."/var/log/osg-update-certs.log\n";
+        }
+        else {
+            $content .= "log = /var/log/osg-update-certs.log\n";            
+        }
     }
     else {
         $content .= "log = " . $config->{log} . "\n";
@@ -1222,21 +1235,37 @@ sub set_caurl {
 #---------------------------------------------------------------------
 sub setup_ca {
     my $ret_code = 0;
-    if(!defined $url && !$noupdate ){
+    my $setup_certs_bin = "/usr/libexec/osg-setup-ca-certificates";
+    
+    if (!defined $url && !$noupdate ) {
         print "\nEither one of [--url or --no-update] options need to be set when using setupCA command.\n";
         exit 1;
     }
 
     # Determine the installation location.  Allow for 'root' keywords
-    if(!$install_location) {
-        print "Location was not declared.  Defaulting to /etc/grid-security\n";
-        $install_location = "/etc/grid-security";
-    }
-    elsif($install_location =~ /^\s*root\s*$/i) {
-        $install_location = "/etc/grid-security";
+    if ($install_location =~ /^\s*root\s*$/i || not $install_location) {
+        if ($is_nonroot) {
+            $install_location = $osg_root . "/etc/grid-security";
+            $setup_certs_bin = $osg_root .$setup_certs_bin;
+                
+            if (not -d $install_location) {
+                print "Could not find certificates directory: " . $install_location . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
+                exit 1;
+            }
+            elsif (not -w $install_location) {
+            print "May not be able to write to the certificates directory: " . $install_location . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
+                exit 1;
+            }
+            
+            print "Using default location: $install_location\n";
+        }
+        else {
+            $install_location = "/etc/grid-security";
+            print "Using default location: $install_location\n";
+        }
     }
 
-    if(!$noupdate){
+    if (!$noupdate) {
 	$config->{install_dir} = $install_location;
         $ret_code = set_caurl(1);
         if($ret_code != 1) {
@@ -1246,15 +1275,15 @@ sub setup_ca {
     }
     print "Setting up CA Certificates for OSG installation\n";
     
-    if(!$noupdate){
+    if (!$noupdate) {
         print "CA Certificates will be installed into $install_location/certificates\n";
-        $ret_code = system("/usr/libexec/osg-setup-ca-certificates --certs-dir $install_location");
+        $ret_code = system("$setup_certs_bin --certs-dir $install_location");
     }
-    else{
+    else {
         $ret_code = setup_ca_wn_symlinks($install_location);
     }
 
-    if($ret_code != 0) {
+    if ($ret_code != 0) {
         print "\nSetup did not complete successfully.\nPlease check the logs for more information.\n";
         exit 1;
     }
@@ -1270,7 +1299,7 @@ sub setup_ca {
 # Output : ret_code:  0 - success; non_zero - failure;
 #
 #---------------------------------------------------------------------
-sub  setup_ca_wn_symlinks{
+sub setup_ca_wn_symlinks{
     my ($install_location) = @_;
 
     # Find out whether to point to symlink to $install_location or $install_location/certificates

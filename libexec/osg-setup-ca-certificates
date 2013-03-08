@@ -16,6 +16,9 @@ my $post_install_msg = "";
 # Parse the command line
 get_options();
 
+my $osg_root = OSGCerts::get_osg_root_loc();
+my $is_nonroot = OSGCerts::get_install_method();
+
 # Move any existing certificates out of the way
 my $old_certs_dir = backup_existing_certs();
 
@@ -94,12 +97,15 @@ sub backup_existing_certs {
 
 # Run osg-update-certs
 sub install_certs {
-
     # Do I need to remove $install_dir first here?
     OSGCerts::log_msg("Installing certs in directory $certs_dir\n");
+
+    # Make sure the proper osg-update-certs bin is run
+    my $update_certs_bin = "/usr/sbin/osg-update-certs";
+    $update_certs_bin = $osg_root . $update_certs_bin if ($is_nonroot);
     
     # If this fails, we should provide the output to the user
-    my $ret = system("/usr/sbin/osg-update-certs --ignore-certs-state --force");
+    my $ret = system("$update_certs_bin --ignore-certs-state --force");
     exit(1) if($ret != 0);
 }
 

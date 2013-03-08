@@ -83,12 +83,12 @@ sub initialize {
         }
 
         # If the directory structure isn't in place, make it.
-        my @root_dirs = [$osg_root . "/etc/grid-security",
+        my @root_dirs = ($osg_root . "/etc/grid-security",
                          $osg_root . "/var/log",
-                         $osg_root . "/var/run"];
+                         $osg_root . "/var/run");
         
         foreach my $dir (@root_dirs) {
-            system(mkdir -p $dir) if (not $dir);
+            system("mkdir -p $dir") if (not -d $dir);
         }
     }
     elsif (not defined($osg_root) && $rpm_missing) {
@@ -170,7 +170,8 @@ sub set_log_file_handle {
 
 sub set_logfile {
     my ($file) = @_;
-    
+
+    system("touch $file") if (not -e $file);
     my $fh;
     if(!open($fh, '>>', $file)) {
 	print STDERR "Warning: could not open log file for appending: $!\n";
