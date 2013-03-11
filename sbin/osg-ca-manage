@@ -1766,16 +1766,18 @@ sub is_writable {
     return if not defined $cert_dir;
 
     my $cert_dir_uid = (stat($cert_dir))[4];
-    if (($< != 0) && ($cert_dir_uid != $<)) {
-        print "You are neither running as root or have ownership of $cert_dir directory.\n";
+    if (($< != 0) && (not -w $cert_dir)) {
+        print "You are neither running as root nor do you have write permissions for $cert_dir directory.\n";
         print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
+        print $contact_goc;
         exit 1;
     }
 
     my $update_certs_conf_uid = (stat($update_certs_conf))[4];
-    if (($< != 0) && ($update_certs_conf_uid != $<)) {
-        print "You are neither running as root or have ownership of the configuration file $update_certs_conf.\n";
+    if (($< != 0) && (not -w $update_certs_conf) {
+        print "You are neither running as root nor do you have write permissions for the configuration file $update_certs_conf.\n";
         print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
+        print $contact_goc;
         exit 1;
     }
 }
