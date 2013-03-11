@@ -292,6 +292,9 @@ sub main {
 	elsif (-e "/etc/grid-security/certificates") {
 	    $cert_dir = "/etc/grid-security/certificates";
 	}
+        elsif ( $is_nonroot && -e "$osg_root/etc/grid-security/certificates") {
+            $cert_dir = "$osg_root/etc/grid-security/certificates"
+        }
         else {
             print "No CA Certificate directory was found. Have you run `osg-ca-manage setupCA`?\nIf you have, please specify the certificate directory using --cert-dir option.\n" . $contact_goc;
             exit 1;
@@ -1355,9 +1358,26 @@ sub fetch_ca {
 sub fetch_crl {
     # Find all installed Fetch CRL packages
     my @package_names = ('fetch-crl3', 'fetch-crl');
-    chomp(my @installed_packages = grep /^fetch-crl/, map { `rpm -q $_` } @package_names);
+    my @installed_packages;
+    my $path;
+    
+    # If a non-root install, prepend $OSG_LOCATION to paths
+    if ($is_nonroot) {
+        my $dirname = $osg_root . "/usr/sbin/";
+        $path = $osg_root . "/var/lib/osg/fetch-crl.lastrun";
+
+        # Look for Fetch-CRL executables in $OSG_LOCATION/usr/sbin
+        opendir my ($dh), $dirname or die "Couldn't open directory, $dirname: $!";
+        my @files = readdir $dh;
+        closedir $dh;
+        chomp(@installed_packages = grep /^fetch-crl(\d)?$/, @files);
+    }
+    else {
+        $path = "/var/lib/osg/fetch-crl.lastrun";        
+        chomp(@installed_packages = grep /^fetch-crl/, map { `rpm -q $_` } @package_names);
+    }
     unless (@installed_packages) {
-        print "Could not find an installed Fetch CRL package (" . join(" or ", @package_names) . ").\n";
+        print "Could not find an installed Fetch CRL package or executable (" . join(" or ", @package_names) . ").\n";
         exit 1;
     }
 
@@ -1366,16 +1386,33 @@ sub fetch_crl {
     # for each version.
     my ($package, $major_version, $executable);
     foreach my $package_nvr (@installed_packages) {
+        my $name, my $version, my $exec, my $cron_service, my @fetch_crl_files;
+        
         if ($package_nvr =~ /^(fetch-crl[^-]*)-(\d)[^-]*-[^-]*$/) {
-            my ($name, $version) = ($1, $2);
-            chomp(my @fetch_crl_files = `rpm -ql $name`);
-            my $exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
-            my $cron_service = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
+            ($name, $version) = ($1, $2);
+            chomp(@fetch_crl_files = `rpm -ql $name`);
+            $exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
+            $cron_service = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
+            
             my $exit_status = system('/sbin/service ' . basename($cron_service) . ' status >/dev/null 2>&1');
             if ($exit_status == 0) {
                 ($package, $major_version, $executable) = ($name, $version, $exec);
-                last;
+                last;       
+        }
+        elsif ($package_nvr =~ /^(fetch-crl)(\d)?$/) {
+            if (defined $2) {
+                ($name, $version) = ($1 . $2, $2);
             }
+            else {
+                $name = $1;
+                # not sure how we should get the version number here: inspect RHEL release number? do we even need to 
+                # worry about it?
+            }
+            $exec = $osg_root . "/usr/sbin/" . $name;
+            # this doesn't apply in the tarball case, not sure how we'll do the checking
+            # $cron_service = $osg_root . "etc/rc.d/init.d/" . $name . "-cron";
+            ($package, $major_version, $executable) = ($name, $version, $exec);            
+        }
         }
     }
 
@@ -1404,7 +1441,6 @@ sub fetch_crl {
     print "$ret\n";
     print "...done\n";
 
-    my $path = "/var/lib/osg/fetch-crl.lastrun";
     open(FILE, '>', $path) or die("Can't open $path for writing: $!");
     print FILE time; # Should we do this? (cat, 2013-02, no; but we should formally deprecate 1st)
     close FILE;
