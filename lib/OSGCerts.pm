@@ -37,7 +37,7 @@ my $package_log_file;
 my $updater_status_file;
 my $updater_log_file;
 my $updater_conf_file;
-my $is_nonroot;
+my $is_tarball;
 my $osg_root = $ENV{'OSG_LOCATION'};
     
 # File handle for whichever log we are using
@@ -48,7 +48,7 @@ sub initialize {
     ($PACKAGE) = @_;
 
     my $rpm_missing = system("rpm -qf $0 > /dev/null 2>&1");
-    $is_nonroot = 0;
+    $is_tarball = 0;
 
     # File paths for rpm installs     
     $package_log_file    = "/var/log/$PACKAGE.system.out";
@@ -62,7 +62,7 @@ sub initialize {
     if (defined($osg_root) && $rpm_missing) {
         # Remove trailing slash to path if there is one
         $osg_root =~ s/\/?$//; 
-        $is_nonroot = 1;
+        $is_tarball = 1;
 
         $package_log_file    = $osg_root . $package_log_file;
         $certs_version_file  = $osg_root . $certs_version_file;
@@ -160,7 +160,7 @@ sub get_osg_root_loc {
 }
 
 sub get_install_method {
-    return $is_nonroot;
+    return $is_tarball;
 }
 
 # Logging subroutines

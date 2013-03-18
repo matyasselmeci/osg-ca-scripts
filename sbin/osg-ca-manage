@@ -233,7 +233,7 @@ my %source_pem;
 my $igtf_format=0;
 my $cadir_ar; #ca directory to be added or removed
 my $caname_ar; #ca file to be added or removed
-my $is_nonroot; # tarball installs
+my $is_tarball; # tarball installs
 my $osg_root;
 my $contact_goc;
 
@@ -271,7 +271,7 @@ sub main {
                "help|usage"    => \&usage);
 
     OSGCerts::initialize("osg-ca-manage");
-    $is_nonroot = OSGCerts::get_install_method();
+    $is_tarball = OSGCerts::get_install_method();
     $osg_root = OSGCerts::get_osg_root_loc();
     $contact_goc = OSGCerts::contact_goc_err_msg();
         
@@ -292,7 +292,7 @@ sub main {
 	elsif (-e "/etc/grid-security/certificates") {
 	    $cert_dir = "/etc/grid-security/certificates";
 	}
-        elsif ( $is_nonroot && -e "$osg_root/etc/grid-security/certificates") {
+        elsif ( $is_tarball && -e "$osg_root/etc/grid-security/certificates") {
             $cert_dir = "$osg_root/etc/grid-security/certificates"
         }
         else {
@@ -634,7 +634,7 @@ cacerts_url = " . $config->{cacerts_url} . "\n";
 
     # Log files respect $OSG_LOCATION if necessary
     if (!$config->{log}) {
-        if ($is_nonroot) {        
+        if ($is_tarball) {        
             $content .= "log = " . $osg_root ."/var/log/osg-update-certs.log\n";
         }
         else {
@@ -1247,7 +1247,7 @@ sub setup_ca {
 
     # Determine the installation location.  Allow for 'root' keywords
     if ($install_location =~ /^\s*root\s*$/i || not $install_location) {
-        if ($is_nonroot) {
+        if ($is_tarball) {
             $install_location = $osg_root . "/etc/grid-security";
             $setup_certs_bin = $osg_root .$setup_certs_bin;
                 
@@ -1333,6 +1333,7 @@ sub setup_ca_wn_symlinks{
 #---------------------------------------------------------------------
 sub fetch_ca {
     my $osg_update_certs = "/usr/sbin/osg-update-certs";
+    $osg_update_certs = $osg_root . $osg_update_certs if ($is_tarball);
     if (! -e $osg_update_certs ) {
         print "osg-update-certs not found at ('$osg_update_certs').\n";
         exit 1;
@@ -1362,7 +1363,7 @@ sub fetch_crl {
     my $path;
     
     # If a non-root install, prepend $OSG_LOCATION to paths
-    if ($is_nonroot) {
+    if ($is_tarball) {
         my $dirname = $osg_root . "/usr/sbin/";
         $path = $osg_root . "/var/lib/osg/fetch-crl.lastrun";
 
@@ -1398,6 +1399,7 @@ sub fetch_crl {
             if ($exit_status == 0) {
                 ($package, $major_version, $executable) = ($name, $version, $exec);
                 last;       
+            }
         }
         elsif ($package_nvr =~ /^(fetch-crl)(\d)?$/) {
             if (defined $2) {
@@ -1405,14 +1407,21 @@ sub fetch_crl {
             }
             else {
                 $name = $1;
-                # not sure how we should get the version number here: inspect RHEL release number? do we even need to 
-                # worry about it?
+                $version = 0; # do we even need to track this?
             }
+            
             $exec = $osg_root . "/usr/sbin/" . $name;
-            # this doesn't apply in the tarball case, not sure how we'll do the checking
-            # $cron_service = $osg_root . "etc/rc.d/init.d/" . $name . "-cron";
-            ($package, $major_version, $executable) = ($name, $version, $exec);            
-        }
+            ($package, $major_version, $executable) = ($name, $version, $exec);
+            
+            # Encourage user to add an entry to their crontab in the tarball case
+            my $username = getpwuid( $< );
+            print "WARNING: Fetch CRL is installed but may need its cronjob enabled!\n";
+            print "         Installed package(s):\n";
+            print "           * $_\n" foreach @installed_packages;
+            print "         Please run `crontab -u $username -l` and look for the following line:\n\n";
+            print "         `10 * * * *    $username    $osg_root/usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron`\n\n";
+            print "         If the line is not there, run `crontab -u $username -e` and add it yourself.\n";
+            print $contact_goc;
         }
     }
 
@@ -1441,6 +1450,8 @@ sub fetch_crl {
     print "$ret\n";
     print "...done\n";
 
+    my $lastrun_dir = dirname($path);
+    system("mkdir -p $lastrun_dir") if (not -d $lastrun_dir);
     open(FILE, '>', $path) or die("Can't open $path for writing: $!");
     print FILE time; # Should we do this? (cat, 2013-02, no; but we should formally deprecate 1st)
     close FILE;
@@ -1774,7 +1785,7 @@ sub is_writable {
     }
 
     my $update_certs_conf_uid = (stat($update_certs_conf))[4];
-    if (($< != 0) && (not -w $update_certs_conf) {
+    if (($< != 0) && (not -w $update_certs_conf)) {
         print "You are neither running as root nor do you have write permissions for the configuration file $update_certs_conf.\n";
         print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
         print $contact_goc;

@@ -17,7 +17,7 @@ my $post_install_msg = "";
 get_options();
 
 my $osg_root = OSGCerts::get_osg_root_loc();
-my $is_nonroot = OSGCerts::get_install_method();
+my $is_tarball = OSGCerts::get_install_method();
 
 # Move any existing certificates out of the way
 my $old_certs_dir = backup_existing_certs();
@@ -102,7 +102,7 @@ sub install_certs {
 
     # Make sure the proper osg-update-certs bin is run
     my $update_certs_bin = "/usr/sbin/osg-update-certs";
-    $update_certs_bin = $osg_root . $update_certs_bin if ($is_nonroot);
+    $update_certs_bin = $osg_root . $update_certs_bin if ($is_tarball);
     
     # If this fails, we should provide the output to the user
     my $ret = system("$update_certs_bin --ignore-certs-state --force");
