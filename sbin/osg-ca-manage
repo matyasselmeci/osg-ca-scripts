@@ -320,13 +320,11 @@ sub main {
 
     if($command eq "showcaurl") {
         # Read in the configuration data.
-        check_rpm();
         read_config_file();
         print "$config->{cacerts_url}\n";
     }
     elsif($command eq "listca") {
         check_openssl();
-        check_rpm();
         read_config_file();
         search_ca_pattern($pattern,0);
     }
@@ -351,7 +349,6 @@ sub main {
         exit $ret;
     }
     elsif($command eq "diffcapackage") {
-        check_rpm();
         check_openssl();
         read_config_file();
         my $success = get_distribution_certs_list();
@@ -376,24 +373,20 @@ sub main {
         show_chain_ca($hash);
     }
     elsif($command eq "refreshca") {
-        check_rpm();
         is_writable();
         fetch_ca();
     }
     elsif($command eq "fetchcrl") {
-        check_rpm();
         is_writable();
         fetch_crl();
     }
     elsif($command eq "setupca") {
-        check_rpm();
         read_config_file();
         setup_ca();
         exit 0;
     }
     elsif($command eq "setcaurl") {
         # Read in the configuration data.
-        check_rpm();
         read_config_file();
         is_writable();
         my $ret_code = set_caurl($is_setup);
@@ -402,7 +395,6 @@ sub main {
     }
     elsif($command eq "add") {
         # Read in the configuration data.
-        check_rpm();
         read_config_file();
         is_writable();
 
@@ -430,7 +422,6 @@ sub main {
     }
     elsif($command eq "remove") {
         check_openssl();
-        check_rpm();
         read_config_file();
         is_writable();
 
@@ -1814,28 +1805,6 @@ sub gmt_to_unix_time {
     return timegm($sec, $min, $hour, $date, $month, $year);
 }
 
-
-#---------------------------------------------------------------------
-#
-# check_rpm: Check if Certificate update is being managed by RPM
-# Input  : None
-# Output : None
-#
-#---------------------------------------------------------------------
-sub check_rpm {
-    if(OSGCerts::which("rpm")) {
-        # Don't use system() or failsafe_system() because we don't want to log the output
-        # in case the user doesn't have priveleges to write the output file
-        my $rpm_ret = CORE::system("rpm -q --whatprovides osg-ca-certs >/dev/null 2>&1");
-        if(!$rpm_ret) {
-            print "ERROR: You seem to have installed CA certificates using the osg-ca-certs RPM.\n";
-            exit 1;
-        }
-    }
-    elsif(-e "/sbin/dpkg") {
-        # To be implemented for Debian
-    }
-}
 #---------------------------------------------------------------------
 #
 # check_package_format: Check what format of igtf distribution is installed
@@ -1865,7 +1834,6 @@ sub check_package_format{
 # Output : None
 #
 #---------------------------------------------------------------------
-
 sub set_tarball_cert_location{
     $install_location = $osg_root . "/etc/grid-security";
     check_cert_location();
@@ -1878,7 +1846,6 @@ sub set_tarball_cert_location{
 # Output : None
 #
 #---------------------------------------------------------------------
-
 sub set_rpm_cert_location{
     $install_location = "/etc/grid-security";
     check_cert_location();
@@ -1891,7 +1858,6 @@ sub set_rpm_cert_location{
 # Output : None
 #
 #---------------------------------------------------------------------
-
 sub check_cert_location{
     if (not -d $install_location) {
         print "Could not find certificates directory: " . $install_location . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
