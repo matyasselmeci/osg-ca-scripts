@@ -523,7 +523,8 @@ sub setupca_usage {
 
     print "osg-ca-manage setupca --location [root|<PATH>] --url [osg-compat|osg|igtf-compat|igtf|<URL>] --no-update --force
   Location:
-    root  - install into /etc/grid-security (\$OSG_LOCATION/etc/grid-security for tarball installs)
+    If this option is excluded, the default locations are \"/etc/grid-security\" and \"\$OSG_LOCATION/etc/grid-security\" for RPM and tarball installs respectively. Otherwise you can specify the following:
+    root  - install into /etc/grid-security
     PATH  - install into PATH (e.g. /nfs/certificates)
 
   URL:
@@ -1246,27 +1247,19 @@ sub setup_ca {
     }
 
     # Determine the installation location.  Allow for 'root' keywords
-    if ($install_location =~ /^\s*root\s*$/i || not $install_location) {
+    if (not $install_location) {
         if ($is_tarball) {
-            $install_location = $osg_root . "/etc/grid-security";
-            $setup_certs_bin = $osg_root .$setup_certs_bin;
-                
-            if (not -d $install_location) {
-                print "Could not find certificates directory: " . $install_location . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
-                exit 1;
-            }
-            elsif (not -w $install_location) {
-            print "May not be able to write to the certificates directory: " . $install_location . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
-                exit 1;
-            }
-            
-            print "Using default location: $install_location\n";
+            $setup_certs_bin = $osg_root . $setup_certs_bin;
+            set_tarball_cert_location();
         }
         else {
-            $install_location = "/etc/grid-security";
-            print "Using default location: $install_location\n";
+            set_rpm_cert_location();
         }
     }
+    elsif ($install_location =~ /^\s*root\s*$/i){
+        set_rpm_cert_location();
+    }
+
 
     if (!$noupdate) {
 	$config->{install_dir} = $install_location;
@@ -1863,4 +1856,50 @@ sub check_package_format{
         $format = 0 ;
     }
     return $format;
+}
+
+#---------------------------------------------------------------------
+#
+# set_tarball_cert_location: Set path to osg-setup-ca-certificates and install path to CA certificates for the tarball case
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+
+sub set_tarball_cert_location{
+    $install_location = $osg_root . "/etc/grid-security";
+    check_cert_location();
+}
+
+#---------------------------------------------------------------------
+#
+# set_rpm_cert_location: Set path to install CA certificates for the RPM case
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+
+sub set_rpm_cert_location{
+    $install_location = "/etc/grid-security";
+    check_cert_location();
+}
+
+#---------------------------------------------------------------------
+#
+# check_cert_location: Check existence and writeability of cert install location
+# Input  : None
+# Output : None
+#
+#---------------------------------------------------------------------
+
+sub check_cert_location{
+    if (not -d $install_location) {
+        print "Could not find certificates directory: " . $install_location . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
+        exit 1;
+    }
+    elsif (not -w $install_location) {
+        print "May not be able to write to the certificates directory: " . $install_location . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
+        exit 1;
+    }
+    print "Using location: $install_location\n";    
 }

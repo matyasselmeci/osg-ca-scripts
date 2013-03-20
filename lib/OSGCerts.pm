@@ -59,7 +59,7 @@ sub initialize {
     $updater_log_file    = "/var/log/osg-update-certs.log";
 
     # Change file paths for non-root installs
-    if (defined($osg_root) && $rpm_missing) {
+    if (defined($osg_root) and $rpm_missing) {
         # Remove trailing slash to path if there is one
         $osg_root =~ s/\/?$//; 
         $is_tarball = 1;
@@ -91,7 +91,7 @@ sub initialize {
             system("mkdir -p $dir") if (not -d $dir);
         }
     }
-    elsif (not defined($osg_root) && $rpm_missing) {
+    elsif (not defined($osg_root) and $rpm_missing) {
         print "Could not find OSG install location. Have you sourced setup.sh?\n" . contact_goc_err_msg();
         exit 1;
     }
