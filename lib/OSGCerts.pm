@@ -60,40 +60,42 @@ sub initialize {
 
     # Change file paths for non-root installs
     if (defined($osg_root) and $rpm_missing) {
-        # Remove trailing slash to path if there is one
-        $osg_root =~ s/\/?$//; 
-        $is_tarball = 1;
+        if (defined($osg_root)) {
+            # Remove trailing slash to path if there is one
+            $osg_root =~ s/\/?$//; 
+            $is_tarball = 1;
 
-        $package_log_file    = $osg_root . $package_log_file;
-        $certs_version_file  = $osg_root . $certs_version_file;
-        $certs_version_dir   = $osg_root . $certs_version_dir;
-        $updater_status_file = $osg_root . $updater_status_file;
-        $updater_conf_file   = $osg_root . $updater_conf_file;
-        $updater_log_file    = $osg_root . $updater_log_file;
+            $package_log_file    = $osg_root . $package_log_file;
+            $certs_version_file  = $osg_root . $certs_version_file;
+            $certs_version_dir   = $osg_root . $certs_version_dir;
+            $updater_status_file = $osg_root . $updater_status_file;
+            $updater_conf_file   = $osg_root . $updater_conf_file;
+            $updater_log_file    = $osg_root . $updater_log_file;
 
-        # Check existence/writeability of the main conf file that should have been a part of the tarball install. If
-        # there are problems, warn the user and exit early.
-        if (not -e $updater_conf_file) {
-            print "Could not find config file: " . $updater_conf_file . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . contact_goc_err_msg();
+            # Check existence/writeability of the main conf file that should have been a part of the tarball install. If
+            # there are problems, warn the user and exit early.
+            if (not -e $updater_conf_file) {
+                print "Could not find config file: " . $updater_conf_file . ".  This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . contact_goc_err_msg();
+                exit 1;
+            }
+            elsif (not -w $updater_conf_file) {
+                print "May not be able to write to the config file: " . $updater_conf_file . ".  You may need to speak to the owner or login as the owner of the file.\n" . contact_goc_err_msg();
+                exit 1;
+            }
+
+            # If the directory structure isn't in place, make it.
+            my @root_dirs = ($osg_root . "/etc/grid-security",
+                             $osg_root . "/var/log",
+                             $osg_root . "/var/run");
+            
+            foreach my $dir (@root_dirs) {
+                system("mkdir -p $dir") unless (-d $dir);
+            }
+        }
+        else {
+            print "Could not find OSG install location.  Have you sourced setup.sh?\n" . contact_goc_err_msg();
             exit 1;
         }
-        elsif (not -w $updater_conf_file) {
-            print "May not be able to write to the config file: " . $updater_conf_file . ". You may need to speak to the owner or login as the owner of the file.\n" . contact_goc_err_msg();
-            exit 1;
-        }
-
-        # If the directory structure isn't in place, make it.
-        my @root_dirs = ($osg_root . "/etc/grid-security",
-                         $osg_root . "/var/log",
-                         $osg_root . "/var/run");
-        
-        foreach my $dir (@root_dirs) {
-            system("mkdir -p $dir") if (not -d $dir);
-        }
-    }
-    elsif (not defined($osg_root) and $rpm_missing) {
-        print "Could not find OSG install location. Have you sourced setup.sh?\n" . contact_goc_err_msg();
-        exit 1;
     }
     
     # Replace this with something?
@@ -171,7 +173,7 @@ sub set_log_file_handle {
 sub set_logfile {
     my ($file) = @_;
 
-    system("touch $file") if (not -e $file);
+    utime(undef, undef, $file) unless (-e $file);
     my $fh;
     if(!open($fh, '>>', $file)) {
 	print STDERR "Warning: could not open log file for appending: $!\n";

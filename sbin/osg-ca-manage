@@ -222,7 +222,7 @@ my $noupdate = 0;
 my $cert_dir;
 my $dir;
 my $url;
-my $install_location=""; # Initialize so it doesn't error on regex match
+my $install_location = ""; # Initialize so it doesn't error on regex match
 my $auto_refresh = 0;
 my $certs_file;
 my $update_certs_conf;
@@ -292,7 +292,7 @@ sub main {
 	elsif (-e "/etc/grid-security/certificates") {
 	    $cert_dir = "/etc/grid-security/certificates";
 	}
-        elsif ( $is_tarball && -e "$osg_root/etc/grid-security/certificates") {
+        elsif ($is_tarball && -e "$osg_root/etc/grid-security/certificates") {
             $cert_dir = "$osg_root/etc/grid-security/certificates"
         }
         else {
@@ -514,14 +514,17 @@ sub setupca_usage {
 
     print "osg-ca-manage setupca --location [root|<PATH>] --url [osg-compat|osg|igtf-compat|igtf|<URL>] --no-update --force
   Location:
-    If this option is excluded, the default locations are \"/etc/grid-security\" and \"\$OSG_LOCATION/etc/grid-security\" for RPM and tarball installs respectively. Otherwise you can specify the following:
+    If this option is excluded, the default locations are \"/etc/grid-security\" 
+    and \"\$OSG_LOCATION/etc/grid-security\" for RPM and tarball installs 
+    respectively. You can specify the following arguments:
     root  - install into /etc/grid-security
     PATH  - install into PATH (e.g. /nfs/certificates)
 
   URL:
     osg - use the OSG GOC distribution
     itb - use the ITB GOC distribution (not recommended for production sites)
-    URL - use the distribution at URL (e.g. http://your.site.edu/ca-certificates-manifest-file)
+    URL - use the distribution at URL
+          (e.g. http://your.site.edu/ca-certificates-manifest-file)
 
   No Updates:
     This option is an alternative to setting up CAs to be updated from a URL. 
@@ -625,16 +628,16 @@ cacerts_url = " . $config->{cacerts_url} . "\n";
 ";
 
     # Log files respect $OSG_LOCATION if necessary
-    if (!$config->{log}) {
+    if ($config->{log}) {
+        $content .= "log = " . $config->{log} . "\n";
+    }
+    else {
         if ($is_tarball) {        
             $content .= "log = " . $osg_root ."/var/log/osg-update-certs.log\n";
         }
         else {
             $content .= "log = /var/log/osg-update-certs.log\n";            
         }
-    }
-    else {
-        $content .= "log = " . $config->{log} . "\n";
     }
 
 
@@ -666,14 +669,14 @@ cacerts_url = " . $config->{cacerts_url} . "\n";
     }
 
     my $return_code;
-    if(!open(OUT, '>', $update_certs_conf)) {
-	print STDERR "Can not open $update_certs_conf for writing: $!\n";
-	$return_code = undef;
-    }
-    else {
+    if(open(OUT, '>', $update_certs_conf)) {
 	print OUT $content;
 	close(OUT);
 	$return_code = 1;
+    }
+    else {
+	print STDERR "Can not open $update_certs_conf for writing: $!\n";
+	$return_code = undef;
     }
     if(!$is_setup) { #Do not fetchca and crls during setup
         if ($auto_refresh) {
@@ -1262,20 +1265,20 @@ sub setup_ca {
     }
     print "Setting up CA Certificates for OSG installation\n";
     
-    if (!$noupdate) {
+    if ($noupdate) {
+        $ret_code = setup_ca_wn_symlinks($install_location);
+    }
+    else {
         print "CA Certificates will be installed into $install_location/certificates\n";
         $ret_code = system("$setup_certs_bin --certs-dir $install_location");
     }
-    else {
-        $ret_code = setup_ca_wn_symlinks($install_location);
-    }
 
-    if ($ret_code != 0) {
+    if ($ret_code = 0) {
+        print "\nSetup completed successfully.\n";
+    }
+    else {
         print "\nSetup did not complete successfully.\nPlease check the logs for more information.\n";
         exit 1;
-    }
-    else {
-        print "\nSetup completed successfully.\n";
     }
     
 }
@@ -1324,11 +1327,11 @@ sub fetch_ca {
     }
     my $ret;
     print "Fetching CAs....\n";
-    if (!$force) {
-        $ret = `$osg_update_certs 2>&1`;
+    if ($force) {
+        $ret = `$osg_update_certs --force 2>&1`;
     }
     else {
-        $ret = `$osg_update_certs --force 2>&1`;
+        $ret = `$osg_update_certs 2>&1`;
     }
     print "$ret\n";
 }
