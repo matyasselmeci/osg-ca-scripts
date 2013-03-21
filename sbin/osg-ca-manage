@@ -289,12 +289,12 @@ sub main {
         if (defined $ENV{X509_CERT_DIR} && -d $ENV{X509_CERT_DIR}) {
             $cert_dir = $ENV{X509_CERT_DIR};
         }
-	elsif (-e "/etc/grid-security/certificates") {
-	    $cert_dir = "/etc/grid-security/certificates";
-	}
         elsif ($is_tarball && -e "$osg_root/etc/grid-security/certificates") {
             $cert_dir = "$osg_root/etc/grid-security/certificates"
         }
+	elsif (-e "/etc/grid-security/certificates") {
+	    $cert_dir = "/etc/grid-security/certificates";
+	}
         else {
             print "No CA Certificate directory was found. Have you run `osg-ca-manage setupCA`?\nIf you have, please specify the certificate directory using --cert-dir option.\n" . $contact_goc;
             exit 1;
@@ -1273,7 +1273,7 @@ sub setup_ca {
         $ret_code = system("$setup_certs_bin --certs-dir $install_location");
     }
 
-    if ($ret_code = 0) {
+    if ($ret_code == 0) {
         print "\nSetup completed successfully.\n";
     }
     else {
@@ -1344,89 +1344,20 @@ sub fetch_ca {
 #
 #---------------------------------------------------------------------
 sub fetch_crl {
-    # Find all installed Fetch CRL packages
-    my @package_names = ('fetch-crl3', 'fetch-crl');
-    my @installed_packages;
-    my $path;
+    my @exec_names = ('fetch-crl3', 'fetch-crl');
+    my $path = "/var/lib/osg/fetch-crl.lastrun";        
+    my $executable;
     
-    # If a non-root install, prepend $OSG_LOCATION to paths
+    # Find all installed Fetch CRL
     if ($is_tarball) {
-        my $dirname = $osg_root . "/usr/sbin/";
-        $path = $osg_root . "/var/lib/osg/fetch-crl.lastrun";
-
-        # Look for Fetch-CRL executables in $OSG_LOCATION/usr/sbin
-        opendir my ($dh), $dirname or die "Couldn't open directory, $dirname: $!";
-        my @files = readdir $dh;
-        closedir $dh;
-        chomp(@installed_packages = grep /^fetch-crl(\d)?$/, @files);
+        $path = $osg_root . $path;
+        $executable = fetchcrl_tarball(@exec_names);
     }
     else {
-        $path = "/var/lib/osg/fetch-crl.lastrun";        
-        chomp(@installed_packages = grep /^fetch-crl/, map { `rpm -q $_` } @package_names);
+        $executable = fetchcrl_rpm(@exec_names);
     }
-    unless (@installed_packages) {
-        print "Could not find an installed Fetch CRL package or executable (" . join(" or ", @package_names) . ").\n";
-        exit 1;
-    }
-
-    # Find information for first package with an enabled cron service; track
-    # major version in case any subsequent command must be written separately
-    # for each version.
-    my ($package, $major_version, $executable);
-    foreach my $package_nvr (@installed_packages) {
-        my $name, my $version, my $exec, my $cron_service, my @fetch_crl_files;
-        
-        if ($package_nvr =~ /^(fetch-crl[^-]*)-(\d)[^-]*-[^-]*$/) {
-            ($name, $version) = ($1, $2);
-            chomp(@fetch_crl_files = `rpm -ql $name`);
-            $exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
-            $cron_service = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
-            
-            my $exit_status = system('/sbin/service ' . basename($cron_service) . ' status >/dev/null 2>&1');
-            if ($exit_status == 0) {
-                ($package, $major_version, $executable) = ($name, $version, $exec);
-                last;       
-            }
-        }
-        elsif ($package_nvr =~ /^(fetch-crl)(\d)?$/) {
-            if (defined $2) {
-                ($name, $version) = ($1 . $2, $2);
-            }
-            else {
-                $name = $1;
-                $version = 0; # do we even need to track this?
-            }
-            
-            $exec = $osg_root . "/usr/sbin/" . $name;
-            ($package, $major_version, $executable) = ($name, $version, $exec);
-            
-            # Encourage user to add an entry to their crontab in the tarball case
-            my $username = getpwuid( $< );
-            print "WARNING: Fetch CRL is installed but may need its cronjob enabled!\n";
-            print "         Installed package(s):\n";
-            print "           * $_\n" foreach @installed_packages;
-            print "         Please run `crontab -u $username -l` and look for the following line:\n\n";
-            print "         `10 * * * *    $username    $osg_root/usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron`\n\n";
-            print "         If the line is not there, run `crontab -u $username -e` and add it yourself.\n";
-            print $contact_goc;
-        }
-    }
-
+    
     print "Fetching CRLs....\n";
-
-    # Check that fetch-crl is running from cron
-    if (not defined $package) {
-        # We are even not allowing force here. We could, but this is bound to lead to problems.
-        print "WARNING: Fetch CRL is installed but its cron service is not enabled!\n";
-        print "         Installed package(s):\n";
-        print "           * $_\n" foreach @installed_packages;
-        print "         However, no Fetch CRL cron service is enabled, which means that\n";
-        print "         CRLs could expire without being refreshed.  Expired CRLs can cause\n";
-        print "         authentication failures in other tools.  Therefore, CRLs will not\n";
-        print "         be fetched now.  Please enable a Fetch CRL cron service.\n";
-        print "...done\n";
-        exit 1;
-    }
 
     # Long option names are nice, but for fetch-crl short ones are better.  Why?
     # Because the -l and -o options are identical in fetch-crl v2 and v3, but
@@ -1442,6 +1373,120 @@ sub fetch_crl {
     open(FILE, '>', $path) or die("Can't open $path for writing: $!");
     print FILE time; # Should we do this? (cat, 2013-02, no; but we should formally deprecate 1st)
     close FILE;
+}
+
+#---------------------------------------------------------------------
+#
+# check_fetchcrl: Prints error message if Fetch-CRL isn't found
+# Input  : Array of Fetch-CRL executables we support and an array of Fetch-CRL executables on user's computer
+# Output : None
+#
+#
+#---------------------------------------------------------------------
+sub check_fetchcrl {
+    my @exec_names = shift;
+    my @installed = shift;
+    
+    unless (@installed) {
+        print "Could not find an installed Fetch CRL package or executable (" . join(" or ", @exec_names) . ").\n";
+        exit 1;
+    }
+}
+
+#---------------------------------------------------------------------
+#
+# fetchcrl_rpm : Look for Fetch-CRL installations in the RPM case
+# Input  : Array of Fetch-CRL executables we support
+# Output : Path to Fetch-CRL executable
+#
+#
+#---------------------------------------------------------------------
+sub fetchcrl_rpm{
+    my @exec_names = @_;
+
+    chomp(my @installed = grep /^fetch-crl/, map { `rpm -q $_` } @exec_names);
+    check_fetchcrl(@exec_names, @installed);
+    
+    # Find information for first package with an enabled cron service; track
+    # major version in case any subsequent command must be written separately
+    # for each version.
+    my ($package, $major_version, $executable);
+    foreach my $package_nvr (@installed) {
+        my $name, my $version, my $exec, my $cron_service, my @fetch_crl_files;
+        print $package_nvr;
+        if ($package_nvr =~ /^(fetch-crl[^-]*)-(\d)[^-]*-[^-]*$/) {
+            ($name, $version) = ($1, $2);
+            chomp(@fetch_crl_files = `rpm -ql $name`);
+            $exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
+            $cron_service = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
+            
+            my $exit_status = system('/sbin/service ' . basename($cron_service) . ' status >/dev/null 2>&1');
+
+            if ($exit_status == 0) {
+                ($package, $major_version, $executable) = ($name, $version, $exec);
+                last;       
+            }
+        }
+    }
+
+    # Check that fetch-crl is running from cron
+    if (not defined $package) {
+        # We are even not allowing force here. We could, but this is bound to lead to problems.
+        print "WARNING: Fetch CRL is installed but its cron service is not enabled!\n";
+        print "         Installed package(s):\n";
+        print "           * $_\n" foreach @installed;
+        print "         However, no Fetch CRL cron service is enabled, which means that\n";
+        print "         CRLs could expire without being refreshed.  Expired CRLs can cause\n";
+        print "         authentication failures in other tools.  Therefore, CRLs will not\n";
+        print "         be fetched now.  Please enable a Fetch CRL cron service.\n";
+        print "...done\n";
+        exit 1;
+    }
+    
+    return $executable;
+}
+
+#---------------------------------------------------------------------
+#
+# fetchcrl_rpm : Look for Fetch-CRL installations in the tarball case
+# Input  : Array of Fetch-CRL executables we support
+# Output : Path to Fetch-CRL executable
+#
+#
+#---------------------------------------------------------------------
+sub fetchcrl_tarball{
+    my @exec_names = @_;
+    my $dir = $osg_root . "/usr/sbin";
+
+    my @possible_exec = map { basename($_) } glob("$dir/fetch-crl*");
+    my @installed = grep /^fetch-crl\d?$/, @possible_exec; 
+    check_fetchcrl(@exec_names, @installed);
+
+    my ($executable, $name);
+    foreach my $exe (@installed){
+        if ($exe =~ /^(fetch-crl)(\d)?$/) {
+            if (defined $2) {
+                $name = $1 . $2;
+            }
+            else {
+                $name = $1;
+            }
+        }
+
+        $executable = $osg_root . "/usr/sbin/" . $name;
+    }
+
+    # Encourage user to add an entry to their crontab in the tarball case
+    my $username = getpwuid( $< );
+    print "WARNING: Fetch CRL is installed but may need its cronjob enabled!\n";
+    print "         Installed package(s):\n";
+    print "           * $_\n" foreach @installed;
+    print "         Please run `crontab -u $username -l` and look for the following line:\n\n";
+    print "         `10 * * * *    $username    $osg_root/usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron`\n\n";
+    print "         If the line is not there, run `crontab -u $username -e` and add it yourself.\n";
+    print $contact_goc;
+    
+    return $executable;
 }
 
 #---------------------------------------------------------------------
@@ -1765,7 +1810,8 @@ sub is_writable {
 
     my $cert_dir_uid = (stat($cert_dir))[4];
     if (($< != 0) && (not -w $cert_dir)) {
-        print "You are neither running as root nor do you have write permissions for $cert_dir directory.\n";
+        print "You are neither running as root nor do you have write permissions 
+for the directory $cert_dir.\n";
         print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
         print $contact_goc;
         exit 1;
@@ -1773,7 +1819,8 @@ sub is_writable {
 
     my $update_certs_conf_uid = (stat($update_certs_conf))[4];
     if (($< != 0) && (not -w $update_certs_conf)) {
-        print "You are neither running as root nor do you have write permissions for the configuration file $update_certs_conf.\n";
+        print "You are neither running as root nor do you have write permissions for 
+the configuration file $update_certs_conf.\n";
         print "Please specify appropriate CA certificate directory using --cert-dir option.\n";
         print $contact_goc;
         exit 1;
