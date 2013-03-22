@@ -204,7 +204,7 @@ use File::Temp qw/ tempdir /;
 use OSGCerts;
 
 #Constants
-my $version='osg-ca-manage-1.0';
+my $version='osg-ca-manage-##VERSION##';
 my $warn = 24*60*60; # Warning threshhold about expiring CA and CRLs
 my $osg_old_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version";
 my $osg_new_ca_url = "http://software.grid.iu.edu/pacman/cadist/ca-certs-version-new";

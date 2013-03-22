@@ -52,6 +52,7 @@ $(TARBALL_NAME): $(DIST_FILES)
 	find $(TEMP_DIR)/$(TARBALL_DIR) -name '*~' -print0 | xargs --null rm -f
 	find $(TEMP_DIR)/$(TARBALL_DIR) -name '.#*' -print0 | xargs --null rm -f
 	find $(TEMP_DIR)/$(TARBALL_DIR) -name .svn -type d -print0 | xargs --null rm -fr
+	sed -i -e 's/##VERSION##/$(VERSION)/g' $(TEMP_DIR)/$(TARBALL_DIR)/sbin/osg-ca-manage
 	tar czf $(TARBALL_NAME) -C $(TEMP_DIR) $(TARBALL_DIR)
 	rm -rf $(TEMP_DIR)
 
