@@ -1293,16 +1293,18 @@ sub setup_ca_wn_symlinks{
     my ($install_location) = @_;
 
     # Find out whether to point to symlink to $install_location or $install_location/certificates
-    CORE::system("ls $install_location/*.0  >/dev/null 2>&1");
-    if($? != 0){
+    my $certs_in_install_dir = glob("$install_location/*.0");
+    if (not defined $certs_in_install_dir) {
         # We will not use the specified installdir. Lets check certificates dir
- 	    CORE::system("ls $install_location/certificates/*.0  >/dev/null 2>&1");
-  	    if($?==0){
+            my $certs_in_certs_dir = glob("$install_location/certificates/*.0");
+            # print $symlink;
+            if (defined $certs_in_certs_dir) {
 	        print "\nNOTE: '$install_location' did not contain CA files using '$install_location/certificates' dir instead.";
 	        $install_location = " $install_location/certificates";
-	    }else{
+            }
+	    else {
 	        print "\nWARNING: CA files were not found in either '$install_location' or '$install_location/certificates'.";
-            if(!$force) {
+            if (not $force) {
                 print "\nPlease make sure that you have the correct directory or if you want to supress this check run with --force option enabled";
     	        return 1;
 	        }
@@ -1865,8 +1867,8 @@ sub check_package_format{
         $format = 0 ;
     }
 
-    $ret = CORE::system("ls -1 $dir/*.pem &>/dev/null");
-    if($ret!=0) {
+    $ret = glob("$dir/*.pem");
+    if (not defined $ret) {
         $format = 0 ;
     }
     return $format;
