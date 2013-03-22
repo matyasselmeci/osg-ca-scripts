@@ -1416,7 +1416,6 @@ sub fetchcrl_rpm{
     my ($package, $major_version, $executable);
     foreach my $package_nvr (@installed) {
         my $name, my $version, my $exec, my $cron_service, my @fetch_crl_files;
-        print $package_nvr;
         if ($package_nvr =~ /^(fetch-crl[^-]*)-(\d)[^-]*-[^-]*$/) {
             ($name, $version) = ($1, $2);
             chomp(@fetch_crl_files = `rpm -ql $name`);
