@@ -1386,11 +1386,12 @@ sub fetch_crl {
 #
 #---------------------------------------------------------------------
 sub check_fetchcrl {
-    my @exec_names = shift;
-    my @installed = shift;
-    
-    unless (@installed) {
-        print "Could not find an installed Fetch CRL package or executable (" . join(" or ", @exec_names) . ").\n";
+    my ($exec_names_ref, $installed_ref) = @_;
+    # my @exec_names = $ARGV[0];
+    # my @installed = $ARGV[1];
+
+    unless (@$installed_ref) {
+        print "Could not find an installed Fetch CRL package or executable (" . join(" or ", @$exec_names_ref) . ").\n";
         exit 1;
     }
 }
@@ -1407,8 +1408,8 @@ sub fetchcrl_rpm{
     my @exec_names = @_;
 
     chomp(my @installed = grep /^fetch-crl/, map { `rpm -q $_` } @exec_names);
-    check_fetchcrl(@exec_names, @installed);
-    
+    check_fetchcrl(\@exec_names, \@installed);
+
     # Find information for first package with an enabled cron service; track
     # major version in case any subsequent command must be written separately
     # for each version.
@@ -1421,7 +1422,6 @@ sub fetchcrl_rpm{
             chomp(@fetch_crl_files = `rpm -ql $name`);
             $exec = (grep(m{^/usr/sbin/fetch-crl}, @fetch_crl_files))[0];
             $cron_service = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
-            
             my $exit_status = system('/sbin/service ' . basename($cron_service) . ' status >/dev/null 2>&1');
 
             if ($exit_status == 0) {
@@ -1462,7 +1462,7 @@ sub fetchcrl_tarball{
 
     my @possible_exec = map { basename($_) } glob("$dir/fetch-crl*");
     my @installed = grep /^fetch-crl\d?$/, @possible_exec; 
-    check_fetchcrl(@exec_names, @installed);
+    check_fetchcrl(\@exec_names, \@installed);
 
     my ($executable, $name);
     foreach my $exe (@installed){
