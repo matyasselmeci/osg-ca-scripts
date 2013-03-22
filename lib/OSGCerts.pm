@@ -59,7 +59,7 @@ sub initialize {
     $updater_log_file    = "/var/log/osg-update-certs.log";
 
     # Change file paths for non-root installs
-    if (defined($osg_root) and $rpm_missing) {
+    if ($rpm_missing) {
         if (defined($osg_root)) {
             # Remove trailing slash to path if there is one
             $osg_root =~ s/\/?$//; 

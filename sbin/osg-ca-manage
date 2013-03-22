@@ -1464,13 +1464,8 @@ sub fetchcrl_tarball{
 
     my ($executable, $name);
     foreach my $exe (@installed){
-        if ($exe =~ /^(fetch-crl)(\d)?$/) {
-            if (defined $2) {
-                $name = $1 . $2;
-            }
-            else {
-                $name = $1;
-            }
+        if ($exe =~ /^(fetch-crl)\d?$/) {
+            $name = $1;
         }
 
         $executable = $osg_root . "/usr/sbin/" . $name;
@@ -1479,7 +1474,7 @@ sub fetchcrl_tarball{
     # Encourage user to add an entry to their crontab in the tarball case
     my $username = getpwuid( $< );
     print "WARNING: Fetch CRL is installed but may need its cronjob enabled!\n";
-    print "         Installed package(s):\n";
+    print "         Installed executable(s):\n";
     print "           * $_\n" foreach @installed;
     print "         Please run `crontab -u $username -l` and look for the following line:\n\n";
     print "         `10 * * * *    $username    $osg_root/usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron`\n\n";
