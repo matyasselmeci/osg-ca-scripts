@@ -1,4 +1,18 @@
-/var/log/osg-update-certs.* {
+/var/log/osg-update-certs.log {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+
+/var/log/osg-update-certs.log.updates {
+    weekly
+    rotate 10
+    missingok
+    notifempty
+}
+
+/var/log/osg-update-certs.system.out {
     weekly
     rotate 10
     missingok
