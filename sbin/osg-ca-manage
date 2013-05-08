@@ -1244,18 +1244,20 @@ sub setup_ca {
     if (not $install_location) {
         if ($is_tarball) {
             $setup_certs_bin = $osg_root . $setup_certs_bin;
-            set_tarball_cert_location();
+            $install_location = $osg_root . "/etc/grid-security";
         }
         else {
-            set_rpm_cert_location();
+            $install_location = "/etc/grid-security";
         }
+        check_cert_location();
     }
     elsif ($install_location =~ /^\s*root\s*$/i){
-        set_rpm_cert_location();
+        $install_location = "/etc/grid-security";
+        check_cert_location();
     }
 
 
-    if (!$noupdate) {
+    if (not $noupdate) {
 	$config->{install_dir} = $install_location;
         $ret_code = set_caurl(1);
         if($ret_code != 1) {
@@ -1297,7 +1299,6 @@ sub setup_ca_wn_symlinks{
     if (not defined $certs_in_install_dir) {
         # We will not use the specified installdir. Lets check certificates dir
             my $certs_in_certs_dir = glob("$install_location/certificates/*.0");
-            # print $symlink;
             if (defined $certs_in_certs_dir) {
 	        print "\nNOTE: '$install_location' did not contain CA files using '$install_location/certificates' dir instead.";
 	        $install_location = " $install_location/certificates";
@@ -1871,30 +1872,6 @@ sub check_package_format{
         $format = 0 ;
     }
     return $format;
-}
-
-#---------------------------------------------------------------------
-#
-# set_tarball_cert_location: Set path to osg-setup-ca-certificates and install path to CA certificates for the tarball case
-# Input  : None
-# Output : None
-#
-#---------------------------------------------------------------------
-sub set_tarball_cert_location{
-    $install_location = $osg_root . "/etc/grid-security";
-    check_cert_location();
-}
-
-#---------------------------------------------------------------------
-#
-# set_rpm_cert_location: Set path to install CA certificates for the RPM case
-# Input  : None
-# Output : None
-#
-#---------------------------------------------------------------------
-sub set_rpm_cert_location{
-    $install_location = "/etc/grid-security";
-    check_cert_location();
 }
 
 #---------------------------------------------------------------------
