@@ -200,6 +200,7 @@ use Getopt::Long;
 use Time::Local;
 use File::Basename;
 use File::Temp qw/ tempdir /;
+use Cwd;
 
 use OSGCerts;
 
@@ -1232,8 +1233,12 @@ sub set_caurl {
 #
 #---------------------------------------------------------------------
 sub setup_ca {
-    my $ret_code = 0;
+    my $setup_certs_ret = 0;
+    my $setup_symlink_ret = 0;
+    my $create_symlink = 0;
     my $setup_certs_bin = "/usr/libexec/osg-setup-ca-certificates";
+    my $default_location = "/etc/grid-security";
+    my $symlink_location = "/etc/grid-security/certificates";
     
     if (!defined $url && !$noupdate ) {
         print "\nEither one of [--url or --no-update] options need to be set when using setupCA command.\n";
@@ -1241,54 +1246,110 @@ sub setup_ca {
     }
 
     # Determine the installation location.  Allow for 'root' keywords
-    if (not $install_location) {
-        if ($is_tarball) {
-            $setup_certs_bin = $osg_root . $setup_certs_bin;
+    # Adjust variables for tarball case
+
+    if ($is_tarball) {
+        $setup_certs_bin = $osg_root . $setup_certs_bin;
+        $default_location = $osg_root . $default_location;
+        $symlink_location = $osg_root . $symlink_location;
+        if (not $install_location) {
             $install_location = $osg_root . "/etc/grid-security";
         }
-        else {
+        elsif ($install_location =~ /^\s*root\s*$/i) {
             $install_location = "/etc/grid-security";
         }
-        check_cert_location();
     }
-    elsif ($install_location =~ /^\s*root\s*$/i){
-        $install_location = "/etc/grid-security";
-        check_cert_location();
+    else {
+        if (($install_location =~ /^\s*root\s*$/i) or (not $install_location)) {
+            $install_location = "/etc/grid-security";
+        }
     }
 
-
+    $default_location = Cwd::abs_path($default_location);
+    $install_location = Cwd::abs_path($install_location);
+    if ($default_location ne $install_location) {
+        $create_symlink = 1;
+    } 
+    
+    
     if (not $noupdate) {
 	$config->{install_dir} = $install_location;
-        $ret_code = set_caurl(1);
+        my $ret_code = set_caurl(1);
         if($ret_code != 1) {
             print "CA Certificates has not been set up. Exiting.\n";
             exit 1;
         }
     }
     print "Setting up CA Certificates for OSG installation\n";
-    
-    if ($noupdate) {
-        $ret_code = setup_ca_wn_symlinks($install_location);
-    }
-    else {
-        print "CA Certificates will be installed into $install_location/certificates\n";
-        $ret_code = system("$setup_certs_bin --certs-dir $install_location");
-    }
 
-    if ($ret_code == 0) {
-        print "\nSetup completed successfully.\n";
+    # Download/update certs
+    if (not $noupdate) {
+        print "CA Certificates will be installed into $install_location/certificates\n";
+        $setup_certs_ret = system("$setup_certs_bin --certs-dir $install_location");
+    }
+    
+    # We should have install location point to the dir with certs
+    ($setup_symlink_ret, $install_location) = setup_ca_wn_symlinks($install_location); 
+        
+    if ($setup_symlink_ret == 0 and $setup_certs_ret == 0) {
+        my $unlink_ret = 1;
+        my $symlink_ret = 1;
+        my $rmdir_ret = 1;
+        
+        # Creates symlinks when user specifies location so other tools know where to look for certs
+        if ($create_symlink) {
+            if (-l $symlink_location) {
+                if (Cwd::abs_path($symlink_location) eq $install_location){
+                    print("Symlink already exists and points to the specified location.\nSetup completed successfully.\n");
+                    return 0;
+                }
+                elsif ($force) {
+                    $unlink_ret = unlink($symlink_location);
+                    $rmdir_ret = rmdir($symlink_location);
+                }
+                else {
+                    print("Unable to create symlink: $symlink_location, a symlink already exists there.\nIf you wish to skip this check run the same command with --force.\n");
+                    exit 1;
+                }
+            }
+            else {
+                if ($force) {
+                    $unlink_ret = unlink($symlink_location);
+                    $rmdir_ret = rmdir($symlink_location);
+                }
+                elsif (-e $symlink_location) {
+                    print("Unable to create symlink: $symlink_location, it already exists there.\nIf you wish to skip this check, run the same command with --force.\n");
+                    exit 1;
+                }
+            }
+            
+            print("Creating symlink '$symlink_location'...\n");
+            $symlink_ret = symlink($install_location,$symlink_location) or die(print("Unable to create symlink '$symlink_location' -> '$install_location.'\n"));
+
+            # If the delete process fails...fail miserably
+            if ((not $unlink_ret) and (not $rmdir_ret)) {
+                print("Unable to delete '$symlink_location'.\n");
+                exit 1;
+            }
+            else {
+                print "\nSetup completed successfully.\n";
+                return 0;
+            }
+        }
     }
     else {
         print "\nSetup did not complete successfully.\nPlease check the logs for more information.\n";
         exit 1;
     }
-    
+
 }
+
 #---------------------------------------------------------------------
 #
 # setup_ca_wn_symlinks: Just sets up symlink when --no-updates option is set
 # Input  : None
 # Output : ret_code:  0 - success; non_zero - failure;
+#	   $install_location;
 #
 #---------------------------------------------------------------------
 sub setup_ca_wn_symlinks{
@@ -1298,21 +1359,21 @@ sub setup_ca_wn_symlinks{
     my $certs_in_install_dir = glob("$install_location/*.0");
     if (not defined $certs_in_install_dir) {
         # We will not use the specified installdir. Lets check certificates dir
-            my $certs_in_certs_dir = glob("$install_location/certificates/*.0");
-            if (defined $certs_in_certs_dir) {
-	        print "\nNOTE: '$install_location' did not contain CA files using '$install_location/certificates' dir instead.";
-	        $install_location = " $install_location/certificates";
-            }
-	    else {
-	        print "\nWARNING: CA files were not found in either '$install_location' or '$install_location/certificates'.";
+        my $certs_in_certs_dir = glob("$install_location/certificates/*.0");
+        if (defined $certs_in_certs_dir) {
+            print "\nNOTE: '$install_location' did not contain CA files using '$install_location/certificates' dir instead.\n";
+            $install_location = "$install_location/certificates";
+        }
+        else {
+            print "\nWARNING: CA files were not found in either '$install_location' or '$install_location/certificates'.\n";
             if (not $force) {
-                print "\nPlease make sure that you have the correct directory or if you want to supress this check run with --force option enabled";
-    	        return 1;
-	        }
-	    }
+                print "\nPlease make sure that you have the correct directory or if you want to supress this check run with --force option enabled.\n";
+                return 1;
+            }
+        }
     }
 
-    return 0;
+    return (0, $install_location);
 }
 #---------------------------------------------------------------------
 #
@@ -1872,23 +1933,4 @@ sub check_package_format{
         $format = 0 ;
     }
     return $format;
-}
-
-#---------------------------------------------------------------------
-#
-# check_cert_location: Check existence and writeability of cert install location
-# Input  : None
-# Output : None
-#
-#---------------------------------------------------------------------
-sub check_cert_location{
-    if (not -d $install_location) {
-        print "Could not find certificates directory: " . $install_location . ". This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . $contact_goc;
-        exit 1;
-    }
-    elsif (not -w $install_location) {
-        print "May not be able to write to the certificates directory: " . $install_location . ". You may need to speak to the owner or login as the owner of the directory.\n" . $contact_goc;
-        exit 1;
-    }
-    print "Using location: $install_location\n";    
 }

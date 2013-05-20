@@ -246,7 +246,7 @@ sub wget {
 
 #---------------------------------------------------------------------
 #
-# get_ca_description: Check if the certs_url is acceptable
+# fetch_ca_description: Check if the certs_url is acceptable
 # Input  : url(of cacerts)
 # Output : Returns complete $description
 #          $description->{valid} 0 - Validation Failed, 1 - Validation Succeeded
