@@ -10,4 +10,4 @@
 # not every single site gets their certificates at the exact same time and hits
 # the CA cert server really hard.
 
-10 * * * *    root    [ ! -f /var/lock/subsys/osg-update-certs-cron ] || /usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron
+10 * * * *    root    [ ! -f /var/lock/subsys/osg-update-certs-cron ] || /usr/sbin/osg-update-certs --random-sleep 2700 --called-from-cron >/dev/null 2>&1
