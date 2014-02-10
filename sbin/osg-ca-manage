@@ -224,6 +224,7 @@ my $cert_dir;
 my $dir;
 my $url;
 my $install_location = ""; # Initialize so it doesn't error on regex match
+my $nosymlink = 0;
 my $auto_refresh = 0;
 my $certs_file;
 my $update_certs_conf;
@@ -263,6 +264,7 @@ sub main {
                "hash=s"        => \$hash,
                "url=s"         => \$url,
                "location=s"    => \$install_location,
+               "nosymlink"     => \$nosymlink,
                "dir=s"         => \$dir,
                "certfile=s"    => \$certs_file,
                "cadir=s"       => \$cadir_ar,
@@ -500,7 +502,7 @@ sub usage {
     ]
 
     manage_command = [
-        setupCA --location <root|PATH> [--url <osg-compat|osg|igtf-compat|igtf|URL> --no-update --force] |
+        setupCA --location <root|PATH> [--url <osg-compat|osg|igtf-compat|igtf|URL> --no-update --force --nosymlink] |
         refreshCA |
         fetchCRL |
         setCAURL [--url <osg-compat|osg|igtf-compat|igtf|URL>] |
@@ -518,7 +520,7 @@ sub setupca_usage {
     If this option is excluded, the default locations are \"/etc/grid-security\" 
     and \"\$OSG_LOCATION/etc/grid-security\" for RPM and tarball installs 
     respectively. You can specify the following arguments:
-    root  - install into /etc/grid-security
+    root  - install into /etc/grid-security (or \$OSG_LOCATION/etc/grid-security)
     PATH  - install into PATH (e.g. /nfs/certificates)
 
   URL:
@@ -536,6 +538,10 @@ sub setupca_usage {
     different installation).  A common use case for this is to have worker-node
     installations rely on the CA certificates being available on an NFS share,
     and the updating will happen on a single node.
+
+  No Symlink:
+    This option turns off the creation of a symlink in the default location when
+    a different location is specified. 
 
   Force:
     Supress checks.
@@ -1267,7 +1273,7 @@ sub setup_ca {
 
     $default_location = Cwd::abs_path($default_location);
     $install_location = Cwd::abs_path($install_location);
-    if ($default_location ne $install_location) {
+    if ($default_location ne $install_location and $nosymlink == 0) {
         $create_symlink = 1;
     } 
     
