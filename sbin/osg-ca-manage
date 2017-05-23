@@ -28,10 +28,10 @@ osg-ca-manage - Manage the OSG CA certificate installation
     ]
 
     manage_command = [
-        setupCA [--location <root|PATH> --url <osg-compat|osg|igtf-compat|igtf|URL>] [--no-update] [--force]|
+        setupCA [--location <root|PATH> --url <osg|itb|igtf|itb-igtf|URL>] [--no-update] [--force]|
         refreshCA |
         fetchCRL |
-        setCAURL [--url <osg-compat|osg|igtf-compat|igtf|URL>] |
+        setCAURL [--url <osg|itb|igtf|itb-igtf|URL>] |
         add [--dir <local_dir>] --hash <CA hash> |
         remove --hash <CA hash>
     ]
@@ -158,7 +158,7 @@ If you already have the latest version, but wish to force an update anyways, use
 It retrieves CRLs for all CAs within the directory. 
 This will involve invoking fetch-crl, with appropriate arguments. 
 
-=item B<setCAURL> [--url <osg-compat|osg|igtf-compat|igtf|itb-compat|itb|itb-igtf-compat|itb-igtf|URL>]
+=item B<setCAURL> [--url <osg|itb|igtf|itb-igtf|URL>]
 
 This command sets the location from where the CA files. This command will modify 
 osg-update-certs.conf and set the cacerts_url.  Only if --auto-refresh is specified 
@@ -207,13 +207,9 @@ use OSGCerts;
 #Constants
 my $version='osg-ca-manage-##VERSION##';
 my $warn = 24*60*60; # Warning threshhold about expiring CA and CRLs
-my $osg_old_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version";
 my $osg_new_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version-new";
-my $igtf_old_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-old";
 my $igtf_new_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
-my $itb_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version";
 my $itb_new_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-new";
-my $itb_igtf_old_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-old";
 my $itb_igtf_new_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
 
 #Global Variables
@@ -502,10 +498,10 @@ sub usage {
     ]
 
     manage_command = [
-        setupCA --location <root|PATH> [--url <osg-compat|osg|igtf-compat|igtf|URL> --no-update --force --nosymlink] |
+        setupCA --location <root|PATH> [--url <osg|itb|igtf|itb-igtf|URL> --no-update --force --nosymlink] |
         refreshCA |
         fetchCRL |
-        setCAURL [--url <osg-compat|osg|igtf-compat|igtf|URL>] |
+        setCAURL [--url <osg|osg-itb|igtf|itb-igtf|URL>] |
         add [--cadir <localdir> | --caname <CA>]
         remove [--cadir <localdir> | --caname <CA>]
     ]\n";
@@ -515,7 +511,7 @@ sub usage {
 
 sub setupca_usage {
 
-    print "osg-ca-manage setupca --location [root|<PATH>] --url [osg-compat|osg|igtf-compat|igtf|<URL>] --no-update --force
+    print "osg-ca-manage setupca --location [root|<PATH>] --url [osg|osg-itb|igtf|itb-igtf|<URL>] --no-update --force
   Location:
     If this option is excluded, the default locations are \"/etc/grid-security\" 
     and \"\$OSG_LOCATION/etc/grid-security\" for RPM and tarball installs 
@@ -580,26 +576,14 @@ sub read_url {
         print "URL not specified. Please specify the URL you want to use.\nYou could also specify keywords osg/itb as values for --url option and the correct osg/itb URL will be used.\n\n";
         exit 1;
     }
-    elsif ( $url =~ /^osg-compat$/i ) {
-        $url = $osg_old_ca_url;
-    }
     elsif ( $url =~ /^osg$/i ) {
         $url = $osg_new_ca_url;
     }
-    elsif ( $url =~ /^igtf-compat$/i ) {
-        $url = $igtf_old_ca_url;
-    }   
     elsif ( $url =~ /^igtf$/i ) {
         $url = $igtf_new_ca_url;
     }   
-    elsif ( $url =~ /^itb-compat$/i ) {
-        $url = $itb_ca_url;
-    }
     elsif ( $url =~ /^itb$/i ) {
         $url = $itb_new_ca_url;
-    }
-    elsif ( $url =~ /^itb-igtf-compat$/i ) {
-        $url = $itb_igtf_old_ca_url;
     }
     elsif ( $url =~ /^itb-igtf$/i ) {
         $url = $itb_igtf_new_ca_url;
