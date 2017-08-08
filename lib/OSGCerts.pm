@@ -335,7 +335,7 @@ sub fetch_ca_description {
 
 ## Config file will look similar to the following:
 ## 
-## cacerts_url=http://some.url
+## cacerts_url=https://some.url
 ## log=logfile
 ## include=<file to copy into certs>
 ## exclude=<file to remove from certs, if it exists> (DEPRECATED!)
