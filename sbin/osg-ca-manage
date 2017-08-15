@@ -164,7 +164,7 @@ This command sets the location from where the CA files. This command will modify
 osg-update-certs.conf and set the cacerts_url.  Only if --auto-refresh is specified 
 both CA and CRLs are refreshed once the URL change has been made. The distribution <URL> 
 will be required to conform to the OSG CA distribution format (e.g. similar to 
-http://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version). If the <URL> 
+https://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version). If the <URL> 
 cannot be reached or if it is invalid syntactically (i.e. does not conform to the format requirements) 
 a warning will be issued and no changes will be made. The --force option can be used to force 
 a change ignoring the warning (Of course --force will give a warning that osg-update-certs
@@ -207,10 +207,10 @@ use OSGCerts;
 #Constants
 my $version='osg-ca-manage-##VERSION##';
 my $warn = 24*60*60; # Warning threshhold about expiring CA and CRLs
-my $osg_new_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version-new";
-my $igtf_new_ca_url = "http://repo.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
-my $itb_new_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-new";
-my $itb_igtf_new_ca_url = "http://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
+my $osg_new_ca_url = "https://repo.grid.iu.edu/pacman/cadist/ca-certs-version-new";
+my $igtf_new_ca_url = "https://repo.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
+my $itb_new_ca_url = "https://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-new";
+my $itb_igtf_new_ca_url = "https://repo-itb.grid.iu.edu/pacman/cadist/ca-certs-version-igtf-new";
 
 #Global Variables
 my $verbose = 0;
@@ -523,7 +523,7 @@ sub setupca_usage {
     osg - use the OSG GOC distribution
     itb - use the ITB GOC distribution (not recommended for production sites)
     URL - use the distribution at URL
-          (e.g. http://your.site.edu/ca-certificates-manifest-file)
+          (e.g. https://your.site.edu/ca-certificates-manifest-file)
 
   No Updates:
     This option is an alternative to setting up CAs to be updated from a URL. 
@@ -1060,11 +1060,11 @@ sub verify_ca_pattern {
 #---------------------------------------------------------------------
 sub get_distribution_certs_list {
     my $local_url;
-    if($config->{cacerts_url} =~ m/^http:\/\/repo.grid.iu.edu/) {
-        $local_url="http://repo.grid.iu.edu/pacman/cadist/INDEX-new.txt";
+    if($config->{cacerts_url} =~ m/^https:\/\/repo.grid.iu.edu/) {
+        $local_url="https://repo.grid.iu.edu/pacman/cadist/INDEX-new.txt";
     }
-    elsif($config->{cacerts_url} =~ m/^http:\/\/repo-itb.grid.iu.edu/) {
-        $local_url="http://repo-itb.grid.iu.edu/pacman/cadist/INDEX-new.txt";
+    elsif($config->{cacerts_url} =~ m/^https:\/\/repo-itb.grid.iu.edu/) {
+        $local_url="https://repo-itb.grid.iu.edu/pacman/cadist/INDEX-new.txt";
     }
     else {
         # Don't know the url of description file, for a non OSG/ITB certs distribution

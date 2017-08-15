@@ -84,7 +84,7 @@ are responsible for a CA certificate distribution, this should be the full
 URL to the description file, not the URL to the tarball or the directory 
 containing these files.  Example:
 
- cacerts_url=http://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version
+ cacerts_url=https://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version
 
 =head3 log
 
