@@ -661,6 +661,7 @@ sub unpack_certs {
     if (-e $unpacked_path) {
         my $old_certificates = readlink("certificates");
 
+        use filetest 'access';
         if (not -w $old_certificates) {
             print "May not be able to write to: $install_directory/$old_certificates.\nThis will prevent certificate updates so you may need to speak to the owner or login as the owner of this directory.\n" . OSGCerts::contact_goc_err_msg;
             exit 1;

@@ -74,6 +74,7 @@ sub initialize {
 
             # Check existence/writeability of the main conf file that should have been a part of the tarball install. If
             # there are problems, warn the user and exit early.
+            use filetest 'access';
             if (not -e $updater_conf_file) {
                 print "Could not find config file: " . $updater_conf_file . ".  This may mean that \$OSG_LOCATION has not been set properly or your installation has not completed successfully, please try reinstalling.\n" . contact_goc_err_msg();
                 exit 1;
@@ -256,6 +257,7 @@ sub wget {
 sub fetch_ca_description {
     my ($local_url, $working_dir) = @_;
     
+    use filetest 'access';
     if(!$working_dir || !-w $working_dir) {
         $working_dir = tempdir("osgcert-XXXXXX", TMPDIR => 1, CLEANUP => 1);
     }

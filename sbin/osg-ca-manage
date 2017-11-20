@@ -1856,6 +1856,7 @@ sub check_openssl {
 sub is_writable {
     return if not defined $cert_dir;
 
+    use filetest 'access';
     my $cert_dir_uid = (stat($cert_dir))[4];
     if (($< != 0) && (not -w $cert_dir)) {
         print "You are neither running as root nor do you have write permissions 

@@ -43,6 +43,7 @@ sub get_options {
     OSGCerts::initialize("osg-setup-ca-certificates");
 
     # Error check certs-dir
+    use filetest 'access';
     if(!$certs_dir) {
         print "ERROR: Install type is not specified.  You must pass --certs-dir\n";
         exit 1;
