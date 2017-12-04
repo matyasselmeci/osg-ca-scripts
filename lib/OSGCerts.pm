@@ -438,7 +438,7 @@ sub slurp {
 }
 
 sub contact_goc_err_msg {
-    return "\nIf you have any further issues please contact us at goc\@opensciencegrid.org.\n";
+    return "\nIf you have any further issues please contact us at help\@opensciencegrid.org.\n";
 }
 
 1;
