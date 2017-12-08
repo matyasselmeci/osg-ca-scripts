@@ -315,6 +315,10 @@ sub fetch_ca_description {
         $missing_info++;
     }
 
+    if (!defined $description->{tarball_sha256sum}) {
+        log_msg("Description missing: tarball_sha256sum was not specified\n");
+    }
+
     if($missing_info != 0) {
         log_msg("The description file is incomplete.\n");
         $description->{valid} = 0;
