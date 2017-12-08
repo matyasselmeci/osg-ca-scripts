@@ -594,6 +594,9 @@ sub dump_description {
             "    Tarball:         '$description->{tarball}'",
             "    Tarball MD5 Sum: '$description->{tarball_md5sum}'",
             "    Timestamp:       '$description->{timestamp}'");
+    if (defined $description->{tarball_sha256sum}) {
+        log_msg("    Tarball SHA256 Sum: '$description->{tarball_sha256sum}'"),
+    }
 }
 
 #---------------------------------------------------------------------
@@ -620,7 +623,22 @@ sub verify_certs_tarball {
     my $description      = $_[0];
     my $tarball_pathname = $_[1];
 
+
+    my $sha256sum = sha256sum($tarball_pathname);
+
+    if (defined $description->{tarball_sha256sum}) {
+        if ($sha256sum eq $description->{tarball_sha256sum}) {
+	    log_msg("Tarball seems uncorrupted: sha256 checksum is $sha256sum\n");
+	    return 1;
+	}
+	else {
+	    log_msg("Tarball appears to be corrupted: sha256 checksum is $sha256sum instead of $description->{tarball_sha256sum}\n");
+	    return 0;
+	}
+    }
+    
     my $md5sum = md5sum($tarball_pathname);
+
     if($md5sum) {
         if ($md5sum eq $description->{tarball_md5sum}) {
             log_msg("Tarball seems uncorrupted: MD5 checksum is $md5sum\n");
@@ -976,6 +994,16 @@ sub md5sum {
     if(OSGCerts::which("md5sum")) {
         my $md5sum_out = `md5sum $file 2> /dev/null`;
         return (split(/ /, $md5sum_out))[0];
+    }
+    return undef;
+}
+
+sub sha256sum{
+    my ($file) = @_;
+
+    if(OSGCerts::which("sha256sum")) {
+        my $sha2sum_out = `sha256sum $file 2> /dev/null`;
+        return (split(/ /, $sha2sum_out))[0];
     }
     return undef;
 }
