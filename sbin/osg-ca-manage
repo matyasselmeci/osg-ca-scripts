@@ -209,8 +209,8 @@ my $version='osg-ca-manage-##VERSION##';
 my $warn = 24*60*60; # Warning threshhold about expiring CA and CRLs
 my $osg_new_ca_url = "https://repo.opensciencegrid.org/cadist/ca-certs-version-new";
 my $igtf_new_ca_url = "https://repo.opensciencegrid.org/cadist/ca-certs-version-igtf-new";
-my $itb_new_ca_url = "https://repo-itb.grid.iu.edu/cadist/ca-certs-version-new";
-my $itb_igtf_new_ca_url = "https://repo-itb.grid.iu.edu/cadist/ca-certs-version-igtf-new";
+my $itb_new_ca_url = "https://repo-itb.opensciencegrid.org/cadist/ca-certs-version-new";
+my $itb_igtf_new_ca_url = "https://repo-itb.opensciencegrid.org/cadist/ca-certs-version-igtf-new";
 
 #Global Variables
 my $verbose = 0;
@@ -1060,11 +1060,11 @@ sub verify_ca_pattern {
 #---------------------------------------------------------------------
 sub get_distribution_certs_list {
     my $local_url;
-    if($config->{cacerts_url} =~ m/^https:\/\/repo.grid.iu.edu/) {
+    if($config->{cacerts_url} =~ m/^https:\/\/repo.opensciencegrid.org/) {
         $local_url="https://repo.opensciencegrid.org/cadist/INDEX-new.txt";
     }
-    elsif($config->{cacerts_url} =~ m/^https:\/\/repo-itb.grid.iu.edu/) {
-        $local_url="https://repo-itb.grid.iu.edu/cadist/INDEX-new.txt";
+    elsif($config->{cacerts_url} =~ m/^https:\/\/repo-itb.opensciencegrid.org/) {
+        $local_url="https://repo-itb.opensciencegrid.org/cadist/INDEX-new.txt";
     }
     else {
         # Don't know the url of description file, for a non OSG/ITB certs distribution
