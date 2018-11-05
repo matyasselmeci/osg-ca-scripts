@@ -39,7 +39,7 @@ my $updater_log_file;
 my $updater_conf_file;
 my $is_tarball;
 my $osg_root = $ENV{'OSG_LOCATION'};
-    
+
 # File handle for whichever log we are using
 my $log_fh = undef;
 
@@ -50,7 +50,7 @@ sub initialize {
     my $rpm_missing = system("rpm -qf $0 > /dev/null 2>&1");
     $is_tarball = 0;
 
-    # File paths for rpm installs     
+    # File paths for rpm installs
     $package_log_file    = "/var/log/$PACKAGE.system.out";
     $certs_version_file  = "/var/lib/osg-ca-certs/ca-certs-version";
     $certs_version_dir   = dirname($certs_version_file);
@@ -62,7 +62,7 @@ sub initialize {
     if ($rpm_missing) {
         if (defined($osg_root)) {
             # Remove trailing slash to path if there is one
-            $osg_root =~ s/\/?$//; 
+            $osg_root =~ s/\/?$//;
             $is_tarball = 1;
 
             $package_log_file    = $osg_root . $package_log_file;
@@ -88,7 +88,7 @@ sub initialize {
             my @root_dirs = ($osg_root . "/etc/grid-security",
                              $osg_root . "/var/log",
                              $osg_root . "/var/run");
-            
+
             foreach my $dir (@root_dirs) {
                 system("mkdir -p $dir") unless (-d $dir);
             }
@@ -98,7 +98,7 @@ sub initialize {
             exit 1;
         }
     }
-    
+
     # Replace this with something?
     set_logfile($package_log_file);
     $initialized = 1;
@@ -136,7 +136,7 @@ sub get_installed_certs_version {
         $version = slurp($certs_version_file);
         chomp($version);
         log_msg("Installed certs version appears to be '$version'") if($log);
-    } 
+    }
     else {
         $version = undef;
         log_msg("No certificates seem to be installed and owned by this instance of the OSG.") if($log);
@@ -211,30 +211,30 @@ sub log_timestamp {
 
 
 #---------------------------------------------------------------------
-#   
+#
 # wget: Download file from URL.
 # Input  : (url, download_directory)
-#   
+#
 #---------------------------------------------------------------------
 sub wget {
     my ($url, $working_dir, $no_logging) = @_;
-    
+
     if(!defined($no_logging)) {
         $no_logging = 0;
     }
 
     chomp(my $cwd = `pwd`);
     chdir($working_dir);
-    
+
     my $wget_ret = system("wget $url -o $working_dir/wget.out");
-    
+
     if(!$no_logging and defined($log_fh)) {
         my @get_out = slurp("$working_dir/wget.out");
         log_msg(@get_out);
     }
 
     unlink("$working_dir/wget.out");
-        
+
    if($wget_ret != 0) {
         print "wget failure - Could not fetch file at '$url'.\n";
         return 1;
@@ -256,7 +256,7 @@ sub wget {
 #---------------------------------------------------------------------
 sub fetch_ca_description {
     my ($local_url, $working_dir) = @_;
-    
+
     use filetest 'access';
     if(!$working_dir || !-w $working_dir) {
         $working_dir = tempdir("osgcert-XXXXXX", TMPDIR => 1, CLEANUP => 1);
@@ -264,7 +264,7 @@ sub fetch_ca_description {
 
     my $description_file = "$working_dir/" . basename($local_url);
     my $description;
-    
+
     wget($local_url, $working_dir);
 
     if (!-e $description_file) {
@@ -332,7 +332,7 @@ sub fetch_ca_description {
 
 #---------------------------------------------------------------------
 #
-# read_updater_config_file: Read in the osg-update-certs.conf file 
+# read_updater_config_file: Read in the osg-update-certs.conf file
 #                           and populate $config variable.
 # Input  : Config file location
 # Output : A hash containing the config
@@ -340,7 +340,7 @@ sub fetch_ca_description {
 #---------------------------------------------------------------------
 
 ## Config file will look similar to the following:
-## 
+##
 ## cacerts_url=https://some.url
 ## log=logfile
 ## include=<file to copy into certs>
@@ -365,7 +365,7 @@ sub read_updater_config_file {
     $config->{debug} = 0;
     my @includes = ();
     my @excludes = ();
-    my @exclude_cas = (); 
+    my @exclude_cas = ();
 
     if (!-e $updater_conf_file) {
         log_msg("Configuration file '$updater_conf_file' was not found.\n");

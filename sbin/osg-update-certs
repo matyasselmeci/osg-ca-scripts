@@ -1,12 +1,12 @@
 #!/usr/bin/env perl
 
-=head1 NAME 
+=head1 NAME
 
 osg-update-certs - Update the OSG CA certificate installation
 
 =head1 SYNOPSIS
 
-    osg-update-certs [options] 
+    osg-update-certs [options]
                 --force
                 --dump-config
                 --quiet
@@ -20,8 +20,8 @@ This program is used to update the OSG CA certificate distribution.
 Normally, this program is run by cron once every hour, but you can
 choose to run it manually if you prefer.
 
-When this program runs via cron, it exits immediately if the program 
-has been successfully run in the last 24 hours.  The reason for this 
+When this program runs via cron, it exits immediately if the program
+has been successfully run in the last 24 hours.  The reason for this
 is reliability: the OSG installation will set this program to run
 every hour via cron, but it has the goal of checking for an update
 every 24 hours. If the OSG web site is down, or some other serious
@@ -29,8 +29,8 @@ error occurs, it retries an hour later in hopes that the error has
 resolved itself. Once the program has run successfully it will not try
 to do any updates for 24 hours.
 
-When osg-update-certs runs, if it finds a previous incarnation of itself 
-still running, it will kill the old process before it runs. 
+When osg-update-certs runs, if it finds a previous incarnation of itself
+still running, it will kill the old process before it runs.
 
 =head1 OPTIONS
 
@@ -38,7 +38,7 @@ still running, it will kill the old process before it runs.
 
 =item B<--force>
 
-Forces the script to download the certificates even though the release 
+Forces the script to download the certificates even though the release
 version has not changed.
 
 =item B<--dump-config>
@@ -47,13 +47,13 @@ Print the configuration to the screen and exit.  No other work will be done.
 
 =item B<--quiet>
 
-Run with no output to standard output. All output will be in the log file. 
+Run with no output to standard output. All output will be in the log file.
 
-=item B<--debug> 
+=item B<--debug>
 
 Provide more information in the log file.
 
-=item B<--help> 
+=item B<--help>
 
 Show brief explanatory text for using osg-update-certs
 
@@ -61,14 +61,14 @@ Show brief explanatory text for using osg-update-certs
 
 =head1 CONFIGURATION
 
-When osg-update-certs is run, it looks for a configuration file in 
+When osg-update-certs is run, it looks for a configuration file in
 /etc/osg/osg-update-certs.conf.  This file must contain
 an entry for cacerts_url.  There are defaults for all other options.
 
 The configuration file can have blank lines as well as comments.
-Comments begin with a hash mark (#). 
+Comments begin with a hash mark (#).
 
-Each option is of the form 
+Each option is of the form
 
  name=value
 
@@ -78,10 +78,10 @@ The following configuration options can be specified:
 
 This option is required.
 
-The cacerts_url option specifies where to download the CA certificates from. 
-For most users, you will be told what this URL should be. For people who 
-are responsible for a CA certificate distribution, this should be the full 
-URL to the description file, not the URL to the tarball or the directory 
+The cacerts_url option specifies where to download the CA certificates from.
+For most users, you will be told what this URL should be. For people who
+are responsible for a CA certificate distribution, this should be the full
+URL to the description file, not the URL to the tarball or the directory
 containing these files.  Example:
 
  cacerts_url=https://vdt.cs.wisc.edu/software/certificates/vdt-igtf-ca-certs-version
@@ -89,7 +89,7 @@ containing these files.  Example:
 =head3 log
 
 The log option specifies where the log file for osg-update-certs is
-located. The log file is always created. It defaults to 
+located. The log file is always created. It defaults to
 /var/log/osg-update-certs.log, and you do not need to
 set this unless you prefer the log to be elsewhere.
 
@@ -98,14 +98,14 @@ set this unless you prefer the log to be elsewhere.
 =head3 debug
 
 This option is equivalent to the command line --debug option listed above.
-If enabled, it will provide more information in the log file.  The default 
+If enabled, it will provide more information in the log file.  The default
 is to not print this information.  To enable it:
 
  debug=1
 
 =head3 include
 
-An absolute path (or wildcarded path) to the file(s) to be copied into the 
+An absolute path (or wildcarded path) to the file(s) to be copied into the
 CA certificates directory in addition to any files that are downloaded from
 the OSG. This can be used to add a CA that is not part of the OSG. It is
 necessary because when the OSG installs a new set of CA certificates it
@@ -115,7 +115,7 @@ Example:
 
  include=/opt/local-ca/12345678.*
 
- OR 
+ OR
 
  include=/opt/local-ca/12345678.0
  include=/opt/local-ca/12345678.signing_policy
@@ -123,7 +123,7 @@ Example:
 
 Note that you should never specify files that are inside a directory that is
 updated by osg-update-certs.  Though it may seem like a handy shortcut to store
-the files in your current certs directory, at the time the files are copied this 
+the files in your current certs directory, at the time the files are copied this
 directory will have been renamed, and the copy will fail.
 
 =head3 exclude_ca
@@ -171,32 +171,32 @@ main();
 exit 0;
 
 ##
-## A Perl script with a main() function? 
+## A Perl script with a main() function?
 ## What kind of Perl code is this? Is Alain trying to make it look like C or something?
-## 
+##
 ## The logic here is that I wanted to avoid most global variables
 ## That way, I can look at a function and know what state it's manipulating.
 ## But it's really easy to slip up and use a global variable in Perl.
 ## So I put the global space inside of a main() function, and pass around what I need
-## There's probably a more perl-like way of doing this. Feel free to yell and me and 
+## There's probably a more perl-like way of doing this. Feel free to yell and me and
 ## tell me what it is.
 sub main {
     my $description; # A reference to a hash
     my $installed_certs_version;
     my $install_directory;
-    
+
     ##
     ## Part 0: Figure out what we're doing
     ##
-    read_command_line(); 
+    read_command_line();
     OSGCerts::initialize("osg-update-certs");
     my $osg_root = OSGCerts::get_osg_root_loc();
     my $is_tarball = OSGCerts::get_install_method();
-    
+
     my $certs_version_file = OSGCerts::get_certs_version_file_loc();
     $config_file = OSGCerts::get_updater_conf_file_loc();
     load_configuration(); # populates $config
-    
+
     msg("osg-update-certs");
     msg("  Log file: $config->{log}");
     msg("  Updates from: $config->{cacerts_url}");
@@ -223,7 +223,7 @@ sub main {
     ##
     ## Part 2: Figure out if we have successfully run in the last 24 hours
     ##
-    
+
     # We always want to check for a successful run because it loads the default hour
     my $successful_run = check_for_successful_run();
 
@@ -243,10 +243,10 @@ sub main {
 
     # Change pidfile location if non-root
     $pid_file = $osg_root . $pid_file if ($is_tarball);
-    
+
     pid_file();
 
-    ## 
+    ##
     ## Part 4: Figure out what the current version of the certificates release is
     ##
     $install_directory = $config->{install_dir};
@@ -254,13 +254,13 @@ sub main {
     $description = get_certs_description();
     $installed_certs_version = OSGCerts::get_installed_certs_version(1) || "unknown";
 
-    ## 
+    ##
     ## Part 5: Decide if we should download the certificates, and download them.
     ##
     if(!$force_update && !$config_changed && $installed_certs_version eq $description->{certsversion}) {
         msg("Nothing to update: your CA certificate installation is already up-to-date.");
         log_msg("No need to update the certificates: the installed version ($installed_certs_version) is current.");
-    } 
+    }
     else {
         msg("Will update CA certificates from version $installed_certs_version to version $description->{certsversion}.");
 
@@ -278,10 +278,10 @@ sub main {
             log_msg("Installed certs version ($installed_certs_version) is not the current version ($description->{certsversion})");
             log_msg("Will install new version.");
         }
-        
+
         my $certs_tarball = download_certs_tarball($description);
         my $tarball_is_good = verify_certs_tarball($description, $certs_tarball);
-        
+
         ##
         ## Part 6: Install the certificates
         ##
@@ -295,7 +295,7 @@ sub main {
                 log_update($description->{certsversion});
             }
             update_version_info($description, $certs_version_file);
-            
+
             $last_update = time;
             record_config_md5sum();
             msg("Update successful.");
@@ -334,7 +334,7 @@ sub read_command_line {
 
     # don't bother printing to STDOUT if nobody's watching
     $quiet = 1 if($called_from_cron);
-    
+
     if($opt_sleep) {
         if($opt_sleep > (60*60)) {
             print "WARNING: The maximum random sleep time is 60 minutes.\n";
@@ -344,7 +344,7 @@ sub read_command_line {
             print "WARNING: The random sleep can not be less than zero.\n";
             $opt_sleep = 0;
         }
-        
+
         my $sleep_time = int(rand($opt_sleep));
         print "Sleeping for $sleep_time seconds before starting.\n";
         sleep($sleep_time);
@@ -366,14 +366,14 @@ sub load_configuration {
         log_msg("Error loading configuration.");
     }
 
-    # If debug was not specified on the command line, but it is set in config file, 
+    # If debug was not specified on the command line, but it is set in config file,
     # then make sure that debug mode is enabled
     if(!$debug && $config && $config->{debug}) {
         $debug = $config->{debug};
     }
 
     # This needs to be before we call setup_log.  An RSV probe will call this script with the
-    # --dump-config option via a globus-job-run (which will not have write permission on 
+    # --dump-config option via a globus-job-run (which will not have write permission on
     # logs), and we do not want it to die with a permissions problem
     if($dump_config_only) {
         if(!$config) {
@@ -397,7 +397,7 @@ sub load_configuration {
 }
 
 
-# This subroutine is used by RSV to get the value of cacerts_url.  
+# This subroutine is used by RSV to get the value of cacerts_url.
 # If it is modified, ensure that it still works with the relavant probe(s)
 sub dump_config {
     my ($to_screen) = @_;
@@ -437,7 +437,7 @@ sub has_config_changed {
     my $config_md5 = "$config_file.md5";
     if (!-e $config_file || !-e $config_md5) {
         # If config file not found we assume it has been updated.
-        # The same holds if the md5 file for the config is missing. 
+        # The same holds if the md5 file for the config is missing.
         return 1;
     }
     my $recorded_md5 = OSGCerts::slurp($config_md5);
@@ -448,7 +448,7 @@ sub has_config_changed {
             msg("Configuration file has changed.  This will force an update.");
             return 1;
         }
-    } 
+    }
     else {
         # md5sum is unavailable, check the modify timestamp
         my $modify_time = (stat($config_file))[9];
@@ -472,7 +472,7 @@ sub record_config_md5sum {
     my $md5sum = md5sum($config_file);
     if($md5sum) {
         if(open FILE, ">", $config_md5) {
-            print FILE $md5sum; 
+            print FILE $md5sum;
             close(FILE);
         }
         else {
@@ -512,7 +512,7 @@ sub check_for_successful_run {
         if(defined($info->{default_hour})) {
             $default_hour = $info->{default_hour};
 
-            # We only want to run during the default hour if we're called from cron.  
+            # We only want to run during the default hour if we're called from cron.
             if( (localtime())[2] == $default_hour && $called_from_cron) {
                 log_msg("INFO: Checking for update because it is the default hour ($default_hour).");
                 return 0;
@@ -565,7 +565,7 @@ sub pid_file {
 #---------------------------------------------------------------------
 
 sub make_temp_dir {
-    my $work_dir = tempdir("osgcert-XXXXXX", DIR => "/tmp"); 
+    my $work_dir = tempdir("osgcert-XXXXXX", DIR => "/tmp");
     log_msg("Temporary directory is '$work_dir'");
 
     return $work_dir;
@@ -636,7 +636,7 @@ sub verify_certs_tarball {
 	    return 0;
 	}
     }
-    
+
     my $md5sum = md5sum($tarball_pathname);
 
     if($md5sum) {
@@ -670,7 +670,7 @@ sub unpack_certs {
 
     chdir($install_directory);
 
-    # If the certificates directory is a real directory (not a symlink to certificates-vv-v) then this 
+    # If the certificates directory is a real directory (not a symlink to certificates-vv-v) then this
     # script cannot install the certificates atomically.  We will complain and exit in this scenario
     if(!-l "certificates" && -d "certificates") {
         die_and_write_status("The $install_directory/certificates must be a symlink, but it is a directory.")
@@ -684,7 +684,7 @@ sub unpack_certs {
             print "May not be able to write to: $install_directory/$old_certificates.\nThis will prevent certificate updates so you may need to speak to the owner or login as the owner of this directory.\n" . OSGCerts::contact_goc_err_msg;
             exit 1;
         }
-        
+
         my $old_certificates_basename = basename($old_certificates); # in case it is absolute
         my $unpacked_basename = basename($unpacked_path);
 
@@ -737,18 +737,18 @@ sub adjust_certs {
     my $have_includes = 0;
     my $have_excludes = 0;
 
-    # We must process excludes before includes so that an admin can exclude a CA from 
+    # We must process excludes before includes so that an admin can exclude a CA from
     # the standard distribution, but include a newer version of that CA
     foreach my $exclude (@$excludes) {
         $have_excludes = 1;
         log_msg("Warning: Usage of the 'exclude' statement is deprecated.");
-        
+
         my $file = "$unpacked_path/$exclude";
         while(-l $file) {
             # This assumes that the symlink is relative
             $file = "$unpacked_path/" . readlink($file);
         }
-        
+
         if (-r $file) {
             log_msg("Excluding $file");
             system("rm $file");
@@ -757,7 +757,7 @@ sub adjust_certs {
             log_msg("Warning: Can't find requested exclude: $file");
         }
     }
-    
+
     foreach my $exclude_ca (@$exclude_cas) {
         $have_excludes = 1;
 
@@ -840,7 +840,7 @@ sub preserve_crls {
             chomp($crl);
             my $file = basename($crl);
             (my $hash = $file) =~ s/\.r.//;
-            
+
             # In the new set of CAs, do we still have the CA for this CRL?
             if (-e "$unpacked_path/$hash.0") {
                 log_msg("Preserving CRL $file");
@@ -880,7 +880,7 @@ sub install_certs {
     # So what we do is make "certificates" be a symlink to the current certificate directory
     # We then do a rename (which would be mv from the command-line), which will atomically
     # replace the symlink with the new symlink.
-    
+
     system("rm -rf certificates-new");
     log_msg("Atomically installing certificates");
 
@@ -903,7 +903,7 @@ sub install_certs {
         # Temporarily point the certificates symlink at the copy
         symlink($temp_dir, "certificates-new");
         rename("certificates-new", "certificates");
-        
+
         # Remove the original certificates, then rename the unpacked_path to this
         system("rm -rf $old_certificates");
         system("mv $unpacked_path $old_certificates");
@@ -927,7 +927,7 @@ sub install_certs {
 
             # A little paranoia - make sure we don't kill our current certs somehow
             next if($certs_dir eq $install_directory or $certs_dir eq $unpacked_basename);
-                
+
             log_msg("Removing old certificates directory: '$certs_dir'");
             system("rm -fr $certs_dir");
         }
@@ -982,7 +982,7 @@ sub setup_log() {
 
         OSGCerts::set_log_file_handle(new FileHandle ">>$log_name");
         $opened_log = 1;
-    } 
+    }
     else {
         print "Log is already opened (from setup_log)\n";
     }
@@ -1012,7 +1012,7 @@ sub die_and_write_status {
     my ($message) = @_;
 
     write_status_file(0, $message);
-    log_msg("ERROR: osg-update-certs encountered a fatal error.", 
+    log_msg("ERROR: osg-update-certs encountered a fatal error.",
             "Message - '$message'",
             "Now exiting.");
 
@@ -1031,7 +1031,7 @@ sub write_status_file {
     }
 
     # If we don't have a default hour set, randomize it now
-    unless(defined($default_hour)) { 
+    unless(defined($default_hour)) {
         $default_hour = int(rand(24));
         log_msg("INFO: No default hour defined, setting it to $default_hour");
     }
@@ -1062,7 +1062,7 @@ sub log_update {
 # osg-update-certs, you should see updates every one to three months
 #\n\n";
     }
-    
+
     my $timestamp = OSGCerts::log_timestamp();
     if(open(LOG, ">>", $log)) {
         print LOG $header;
