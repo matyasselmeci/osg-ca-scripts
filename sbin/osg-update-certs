@@ -592,10 +592,12 @@ sub dump_description {
             "    Certs version:   '$description->{certsversion}'",
             "    Version info:    '$description->{versiondesc}",
             "    Tarball:         '$description->{tarball}'",
-            "    Tarball MD5 Sum: '$description->{tarball_md5sum}'",
             "    Timestamp:       '$description->{timestamp}'");
+    if (defined $description->{tarball_md5sum}) {
+        log_msg("    Tarball MD5 Sum: '$description->{tarball_md5sum}'")
+    }
     if (defined $description->{tarball_sha256sum}) {
-        log_msg("    Tarball SHA256 Sum: '$description->{tarball_sha256sum}'"),
+        log_msg("    Tarball SHA256 Sum: '$description->{tarball_sha256sum}'")
     }
 }
 
@@ -624,9 +626,8 @@ sub verify_certs_tarball {
     my $tarball_pathname = $_[1];
 
 
-    my $sha256sum = sha256sum($tarball_pathname);
-
     if (defined $description->{tarball_sha256sum}) {
+        my $sha256sum = sha256sum($tarball_pathname);
         if ($sha256sum eq $description->{tarball_sha256sum}) {
 	    log_msg("Tarball seems uncorrupted: sha256 checksum is $sha256sum\n");
 	    return 1;
@@ -636,10 +637,8 @@ sub verify_certs_tarball {
 	    return 0;
 	}
     }
-
-    my $md5sum = md5sum($tarball_pathname);
-
-    if($md5sum) {
+    elsif (defined $description->{tarball_md5sum}) {
+        my $md5sum = md5sum($tarball_pathname);
         if ($md5sum eq $description->{tarball_md5sum}) {
             log_msg("Tarball seems uncorrupted: MD5 checksum is $md5sum\n");
             return 1;
@@ -650,8 +649,8 @@ sub verify_certs_tarball {
         }
     }
     else {
-        log_msg("md5sum is unavailable, so we assume certs tarball is good.");
-        return 1;
+        log_msg("Description is broken: no checksums defined.");
+        return 0;
     }
 }
 

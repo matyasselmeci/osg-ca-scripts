@@ -310,13 +310,9 @@ sub fetch_ca_description {
         $missing_info++;
     }
 
-    if (!defined $description->{tarball_md5sum}) {
-        log_msg("Bad description: tarball_md5sum was not specified\n");
+    if (!(defined $description->{tarball_md5sum} || defined $description->{tarball_sha256sum})) {
+        log_msg("Bad description: neither tarball_md5sum nor tarball_sha256sum were specified\n");
         $missing_info++;
-    }
-
-    if (!defined $description->{tarball_sha256sum}) {
-        log_msg("Description missing: tarball_sha256sum was not specified\n");
     }
 
     if($missing_info != 0) {
