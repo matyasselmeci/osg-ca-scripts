@@ -174,9 +174,16 @@ sub print_full_info {
             my $name = $1;
             chomp(my @fetch_crl_files = `rpm -ql $name`);
             my $init_script = (grep(m{^/etc.*init.d/fetch-crl.*-cron}, @fetch_crl_files))[0];
-            my $cron_service = basename($init_script);
-            my $exit_status = system("/sbin/service $cron_service status >/dev/null 2>&1");
-            push @installed_cron_services, $cron_service if $exit_status == 0;
+            my $service_file = (grep(m{^/usr/lib/systemd/system/fetch-crl-cron.service}, @fetch_crl_files))[0];
+            if ($init_script) {
+                my $cron_service = basename($init_script);
+                my $exit_status = system("/sbin/service $cron_service status >/dev/null 2>&1");
+                push @installed_cron_services, $cron_service if $exit_status == 0;
+            }
+            elsif ($service_file) {  # systemd
+                my $exit_status = system("systemctl status fetch-crl-cron >/dev/null 2>&1");
+                push @installed_cron_services, "fetch-crl-cron";
+            }
         }
     }
     if (@installed_cron_services) {
