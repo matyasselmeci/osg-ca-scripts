@@ -1,5 +1,5 @@
 Name:      osg-ca-scripts
-Version:   1.2.3
+Version:   1.2.4
 Release:   1%{?dist}
 Summary:   CA Certificate helper scripts
 
@@ -77,10 +77,13 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/lib/osg-ca-certs
 %dir %attr(0755,root,root) %{_localstatedir}/lib/osg-ca-certs
 
 %changelog
-* Mon Apr 16 2018 Brian Lin <blin@cs.wisc.edu> 1.2.3-1>
+* Tue Nov 06 2018 Mátyás Selmeci <matyas@cs.wisc.edu>  1.2.4-1
+- Fix error when md5 tarball checksums are missing (SOFTWARE-3463)
+
+* Mon Apr 16 2018 Brian Lin <blin@cs.wisc.edu> 1.2.3-1
 - Update references to grid.iu.edu to opensciencegrid.org
 
-* Mon Dec 11 2017 Edgar Fajardo <efajardo@physics.ucsd.edu> 1.2.2-1>
+* Mon Dec 11 2017 Edgar Fajardo <efajardo@physics.ucsd.edu> 1.2.2-1
 - Bumping version number in the Makefile
 
 * Fri Dec 08 2017 Edgar Fajardo <efajardo@physics.ucsd.edu> 1.2.1-1
